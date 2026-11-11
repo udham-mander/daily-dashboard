@@ -235,6 +235,19 @@ a.btn { text-decoration: none; }
 .item-notes li:last-child { border-bottom: 0; }
 .prev-day { display: flex; align-items: center; gap: 6px; margin: 14px 0 0; color: var(--muted); font-size: 12px; }
 
+/* ---------- Automatic notes ---------- */
+.auto h3 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.auto h3 .when { text-transform: none; letter-spacing: 0; font-weight: 500; }
+.auto h3 .btn { margin-left: auto; text-transform: none; letter-spacing: 0; }
+.auto-points { list-style: none; margin: 0; padding: 0; }
+.auto-points li { display: grid; grid-template-columns: 14px 1fr auto; gap: 10px; align-items: start; padding: 7px 4px; border-bottom: 1px solid var(--line); }
+.auto-points li:last-child { border-bottom: 0; }
+.auto-points li::before { content: ""; width: 6px; height: 6px; margin: 8px 0 0 2px; border-radius: 50%; background: var(--accent); opacity: .7; }
+.auto-points .text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.auto-points li:hover .icon-btn { opacity: 1; }
+.auto-points .icon-btn:hover { color: var(--accent); background: var(--info-bg); }
+.auto .note-line { margin: 6px 4px 0; color: var(--muted); font-size: 12px; }
+
 /* ---------- Done & score ---------- */
 .score { width: 100%; border-collapse: collapse; margin: 6px 0 4px; font-variant-numeric: tabular-nums; }
 .score th, .score td { padding: 7px 10px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }

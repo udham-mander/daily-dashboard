@@ -63,6 +63,8 @@ function renderToday() {
         return `<li><span class="key">${label}</span>${d.title ? ` <span class="muted">${esc(d.title)}</span>` : ""}<div class="text">${esc(notes[k])}</div></li>`;
       }).join("")}</ul>` : "";
 
+  renderAuto();
+
   const p = DATA.previous;
   const prevCount = p ? p.entries.length + Object.keys(p.notes).length : 0;
   $("prevDay").innerHTML = p
@@ -73,6 +75,40 @@ function renderToday() {
   $("count-today").textContent = total;
   $("hint-today").innerHTML = entries.length ? pill("good", `last at ${timeOf(entries.at(-1).at)}`, true) : pill("info", "none yet");
   renderTiles();
+}
+
+// Automatic points: built from the user's GitHub/Jira activity (summarized by Claude when
+// enabled) every couple of hours. Kept apart from their own entries; "+" copies one into the
+// composer so it can become a real note.
+function renderAuto() {
+  const st = DATA.autoStatus ?? { enabled: false };
+  const a = DATA.todayAuto;
+  if (!st.enabled) { $("auto").innerHTML = ""; return; }
+  const hours = st.intervalMinutes >= 60 ? `${+(st.intervalMinutes / 60).toFixed(1)} h` : `${st.intervalMinutes} min`;
+  const when = a?.updatedAt ? `updated ${timeOf(a.updatedAt)} · ${a.source === "claude" ? "summarized by Claude" : "from your activity"}`
+    : `from your GitHub and Jira activity, every ${hours} (${st.workHours})`;
+  const points = a?.points ?? [];
+  $("auto").innerHTML = `<h3>Automatic <span class="when muted">${esc(when)}</span>
+      <button class="btn small ghost" id="autoBtn" ${st.running ? "disabled" : ""} title="Rebuild today's automatic points now">${icon("refresh", st.running ? "i spin" : "i")}<span>${st.running ? "Updating…" : "Update now"}</span></button></h3>` +
+    (points.length
+      ? `<ul class="auto-points">${points.map((p) => `<li><span class="text">${esc(p)}</span>
+          <button class="icon-btn" data-promote="${esc(p)}" title="Copy into a new note" aria-label="Copy into a new note">${icon("plus")}</button></li>`).join("")}</ul>`
+      : `<p class="empty small">${a ? "Nothing recorded yet today." : "Not built yet today."}</p>`) +
+    (a?.errors?.length ? `<p class="note-line">${icon("alert")} ${esc(a.errors.join(" · "))}</p>`
+      : st.error ? `<p class="note-line">${icon("alert")} ${esc(st.error)}</p>` : "");
+}
+
+async function updateAuto() {
+  const btn = $("autoBtn");
+  if (btn) { btn.disabled = true; btn.innerHTML = `${icon("refresh", "i spin")}<span>Updating…</span>`; }
+  try {
+    const r = await api("/api/auto", {});
+    Object.assign(DATA, { todayAuto: r.auto, autoStatus: r.autoStatus });
+    toast(r.auto ? `Automatic points updated (${r.auto.points.length})` : "Nothing recorded today yet");
+  } catch (e) {
+    toast(`Could not update: ${e.message}`, "alert");
+  }
+  renderAuto();
 }
 
 async function addEntry(e) {
@@ -397,6 +433,18 @@ $("entries").addEventListener("click", (e) => {
   const btn = e.target.closest("button");
   if (btn?.dataset.del) deleteEntry(btn.dataset.del);
   else if (btn?.hasAttribute("data-del-summary")) deleteEntry("summary");
+});
+$("auto").addEventListener("click", (e) => {
+  const btn = e.target.closest("button");
+  if (!btn) return;
+  if (btn.id === "autoBtn") updateAuto();
+  else if (btn.dataset.promote !== undefined) {
+    const box = $("entryText");
+    box.value = (box.value.trim() ? `${box.value.trimEnd()}\n` : "") + btn.dataset.promote;
+    store.set("dd-entry-draft", box.value);
+    autosize(box);
+    box.focus();
+  }
 });
 
 // Item note boxes: track unsaved edits ("" is kept: it deletes that note on Save).

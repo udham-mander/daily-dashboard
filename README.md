@@ -32,6 +32,10 @@ and a place to keep **daily notes** — saved as Markdown in a folder you choose
 - **Today's notes** — a running log: type what you did, decided or got blocked on and click
   **Add** (or <kbd>Ctrl</kbd>+<kbd>Enter</kbd>); each entry is saved instantly with its time and
   can be deleted. The section also lists today's notes on individual items
+- **Automatic points** — every 2 hours (within work hours) the app turns what you actually did —
+  pushes, PRs opened/merged, reviews, comments, Jira issues moved or finished — into a few bullets
+  under Today's notes, summarized by Claude (or listed plainly with `auto.useClaude: false`).
+  They stay apart from your own notes; **+** copies one into the composer, **Update now** rebuilds them
 - **Notes on items** — a note box on every Jira issue and PR; **Save notes** stores them. The next
   day each box shows what you wrote last time
 - **History page** (`/history`, or <kbd>H</kbd>) — every saved day with its notes, item notes and
@@ -71,6 +75,7 @@ and start the app again (until then the page shows a reminder and GitHub data on
 | Run in a terminal | `npm start` (or `node app.js --no-open`); logs stay in the terminal |
 | Refresh | **↻ Refresh** or <kbd>R</kbd>. GitHub is instant; Jira takes ~20 s and fills in when ready |
 | Log a note | <kbd>N</kbd> (or open **Today's notes**), type, then **Add** / <kbd>Ctrl</kbd>+<kbd>Enter</kbd> — saved immediately |
+| Automatic points | Built on their own every 2 h; **Update now** in Today's notes rebuilds them; **+** copies one into a note |
 | Save notes on items | **Save notes** or <kbd>Ctrl</kbd>+<kbd>S</kbd>. Unsaved item notes are kept in the browser until you save |
 | Start a Claude session | **Launch Claude** or <kbd>L</kbd> opens a new terminal running `claude` in your default folder; the **▾** caret lists recent folders and takes any other path |
 | See previous days | **History** in the header or <kbd>H</kbd>; <kbd>Esc</kbd> goes back |
@@ -84,6 +89,9 @@ Progress files go to `~/daily-progress` by default:
 ## Notes
 - 09:40 — Reviewed api#101, left 3 comments
 - 14:05 — CSV export working locally
+## Automatic (updated 14:00)
+- Merged dbms#63 (DSM-7528) and pushed 3 commits to ai-shield:feature/MAYA-73-file-support
+- Reviewed dbms#81 (approved)
 ## Jira (4)
 - [PROJ-123](…) Add CSV export to reports — **In Progress**, in progress 6 days
   - Note: waiting on the schema change
@@ -97,7 +105,7 @@ With the `udham-swe` plugin installed, just ask Claude Code:
 - "How did we do this month?" · "What did I finish last week?" (the weekly score)
 - "Which reviews have waited longest? Review the oldest one."
 - "Add a note on PROJ-123: blocked on the schema change" · "Log that I finished the api review"
-- "Open a new Claude session in the api repo"
+- "Open a new Claude session in the api repo" · "Rebuild today's automatic points"
 
 The skill starts the app if needed (without opening a browser), reads it, and saves notes that
 appear on the page. It asks before anything others would see (PR approvals or comments, marking
@@ -123,6 +131,19 @@ ready, Jira comments or transitions).
 | `jira.email` / `jira.tokenEnv` | `""` / `JIRA_API_TOKEN` | Token mode only |
 | `claude.defaultDir` | your home folder | Where **Launch Claude** opens a new session (`~` allowed) |
 | `claude.command` | `claude` | What the new terminal runs (e.g. `claude --model opus`) |
+| `auto.enabled` | `true` | Automatic points on/off |
+| `auto.intervalMinutes` | `120` | How often they are rebuilt |
+| `auto.workHours` | `"07:00-20:00"` | Only within these hours (your computer's clock) |
+| `auto.useClaude` | `null` = same as the Jira source | Summarize with headless Claude (`false` = plain activity lines, no Claude call; token-mode installs default to `false`) |
+| `auto.model` | `haiku` | Model for the summary |
+
+### Automatic points
+
+The app reads your own GitHub event feed (`gh api users/<you>/events`: pushes, PRs opened,
+merged or closed, reviews, comments) and the Jira issues that moved or were finished that day,
+then asks Claude for 3–8 past-tense bullets (`claude -p`, no tools, capped at $0.05; about
+$0.002 with Haiku). If Claude is unavailable the plain activity lines are shown instead, with a
+note. Nothing is written on a day with no activity, and your own notes are never edited.
 
 **Launch Claude** opens a new Windows Terminal tab (or a console window) running PowerShell with
 that command, in the chosen folder; on macOS it uses Terminal.app, on Linux the first terminal

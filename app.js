@@ -6,7 +6,8 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { APP_DIR, CONFIG_FILE, loadConfig } from "./lib/config.js";
-import { collectGithub } from "./lib/github.js";
+import { createAutoNotes } from "./lib/auto.js";
+import { collectGithub, fetchEvents } from "./lib/github.js";
 import { createJiraSource } from "./lib/jira.js";
 import { createLauncher } from "./lib/launch.js";
 import { createServer } from "./lib/server.js";
@@ -48,8 +49,16 @@ const launcher = createLauncher({
   recentFile: path.join(APP_DIR, "recent-dirs.json"),
 });
 
-const server = createServer({
-  cfg, collectGithub, jira, launcher, log,
+// The scheduler reads the server's GitHub cache lazily (the closures run after `server` exists),
+// and the server exposes the scheduler on POST /api/auto.
+let server;
+const auto = createAutoNotes({
+  cfg: cfg.auto, progressDir: cfg.progressDir, jira, fetchEvents, log,
+  data: () => server.finished(),
+  refreshGithub: (force) => server.refreshGithub(force),
+});
+server = createServer({
+  cfg, collectGithub, jira, launcher, auto, log,
   publicDir: path.join(import.meta.dirname, "public"),
   onQuit: () => shutdown("quit from page/API"),
 });
@@ -70,8 +79,8 @@ server.listen(cfg.port, "127.0.0.1", () => {
   log(`started on ${ORIGIN} (jira via ${cfg.jira.mode}, saving to ${cfg.progressDir})`);
   console.log(`Daily Dashboard running at ${ORIGIN}/ — stop with Ctrl+C or the Quit button`);
   jira.loadCache();
-  refreshJira();
-  server.refreshGithub(true);
+  // First data, then the scheduler: its first tick may build today's automatic notes.
+  Promise.allSettled([refreshJira(), server.refreshGithub(true)]).then(() => auto.start());
   if (cfg.jira.refreshMinutes > 0) setInterval(refreshJira, cfg.jira.refreshMinutes * 60_000).unref();
   openBrowser();
 });

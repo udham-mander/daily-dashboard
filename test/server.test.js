@@ -9,7 +9,7 @@ import { createLauncher } from "../lib/launch.js";
 import { createServer } from "../lib/server.js";
 
 let server, port, dir, quit = false;
-const launched = [];
+const launched = [], autoCalls = [];
 
 // Raw requests so tests can set Host/Origin freely (fetch won't let us forge Host).
 function request(method, pathname, { headers = {}, body } = {}) {
@@ -44,6 +44,10 @@ before(async () => {
       closed: [{ repo: "o/r", number: 1, title: "M", url: "https://github.com/o/r/pull/1", merged: true, closedAt: new Date().toISOString() }],
       reviewed: [] }; },
     launcher: createLauncher({ defaultDir: dir, recentFile: path.join(dir, "recent.json"), run: async (_f, _a, cwd) => { launched.push(cwd); } }),
+    auto: {   // a stand-in for createAutoNotes(): records calls, answers like the real one
+      update: async (date, opts) => { autoCalls.push([date, opts]); return { auto: { updatedAt: new Date().toISOString(), source: "activity", points: ["did a thing"], errors: [] } }; },
+      status: () => ({ enabled: true, running: false, intervalMinutes: 120, workHours: "07:00-20:00", useClaude: true }),
+    },
     onQuit: () => { quit = true; },
   });
   await new Promise((r) => server.listen(port, "127.0.0.1", r));
@@ -84,6 +88,21 @@ test("POST /api/launch opens Claude in the default or a given folder and reports
 
   const data = JSON.parse((await request("GET", "/api/data")).body);
   assert.deepEqual(data.claude, { defaultDir: dir, command: "claude", recent: [sub] });
+});
+
+test("POST /api/auto rebuilds the automatic points (today or a given day); /api/data reports the status", async () => {
+  const r = JSON.parse((await write("/api/auto", {})).body);
+  assert.deepEqual(r.auto.points, ["did a thing"]);
+  assert.equal(r.autoStatus.enabled, true);
+  assert.deepEqual(autoCalls.at(-1), [undefined, { reason: "manual" }]);
+  assert.equal((await write("/api/auto", { date: "2026-11-10" })).status, 200);
+  assert.equal(autoCalls.at(-1)[0], "2026-11-10");
+  assert.equal((await write("/api/auto", { date: "nope" })).status, 400);
+  assert.equal((await request("POST", "/api/auto", { body: {} })).status, 403, "needs x-dd + origin");
+  assert.equal((await request("GET", "/api/auto")).status, 404, "never a GET");
+  const data = JSON.parse((await request("GET", "/api/data")).body);
+  assert.equal(data.autoStatus.intervalMinutes, 120);
+  assert.equal(data.todayAuto, null, "the stub did not write a file");
 });
 
 test("a saved day's 'done' is topped up from live data while the day is inside the score window", async () => {
@@ -164,6 +183,7 @@ test("a refresh (which runs Claude) is POST-only; GET /api/data never triggers i
     assert.equal(await req("POST", "/api/refresh", hdrs, {}), 200);
     assert.equal(refreshes, 1);
     assert.equal(await req("POST", "/api/launch", hdrs, {}), 404, "no launcher injected = feature off");
+    assert.equal(await req("POST", "/api/auto", hdrs, {}), 404, "no auto notes injected = feature off");
   } finally {
     srv.close(); fs.rmSync(dir2, { recursive: true, force: true });
   }

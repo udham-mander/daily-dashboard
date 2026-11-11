@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, test } from "node:test";
-import { addEntry, cleanNotes, history, loadProgress, mergeNotes, readDayFull, removeEntry, saveProgress } from "../lib/progress.js";
+import { addEntry, cleanNotes, dayExists, history, loadProgress, mergeNotes, readAuto, readDayFull, removeEntry, saveProgress, setAuto } from "../lib/progress.js";
 
 const github = { mine: [{ repo: "o/r", number: 8, title: "T", url: "u", pending: [{ level: "info", text: "Draft" }] }], toReview: [] };
 const jira = [{ key: "PROJ-1", summary: "S", url: "j", status: "Open", statusCategory: "To Do" }];
@@ -38,7 +38,7 @@ test("loadProgress returns today's notes and the latest earlier day", () => {
   saveProgress(dir, { summary: "today" }, jira, github, "2026-11-11");
   const p = loadProgress(dir, "2026-11-11");
   assert.equal(p.todayNotes.summary, "today");
-  assert.deepEqual(p.previous, { date: "2026-11-10", notes: { summary: "day 2" }, entries: [] });
+  assert.deepEqual(p.previous, { date: "2026-11-10", notes: { summary: "day 2" }, entries: [], auto: null });
   assert.equal(loadProgress(path.join(dir, "missing"), "2026-11-11").previous, null);
 });
 
@@ -62,6 +62,26 @@ test("entries: add, keep alongside item notes, remove", () => {
   assert.throws(() => addEntry(dir, "   ", jira, github, "2026-11-11"), /empty/);
   assert.throws(() => removeEntry(dir, "nope", jira, github, "2026-12-25"), /not found/);
   assert.ok(!fs.existsSync(path.join(dir, "2026-12-25.json")), "a failed delete creates no files");
+});
+
+test("automatic points live beside the user's notes: setAuto keeps entries, saves keep auto, md shows both", () => {
+  addEntry(dir, "my own note", jira, github, "2026-11-11");
+  const auto = { updatedAt: "2026-11-11T08:30:00.000Z", source: "claude", points: ["Merged o/r#8", "Reviewed o/x#3"], activity: [], errors: [] };
+  const r = setAuto(dir, "2026-11-11", auto, jira, github);
+  assert.deepEqual(r.auto.points, ["Merged o/r#8", "Reviewed o/x#3"]);
+  assert.equal(r.entries.length, 1, "entries untouched");
+  saveProgress(dir, { summary: "s" }, jira, github, "2026-11-11");
+  addEntry(dir, "another", jira, github, "2026-11-11");
+  assert.deepEqual(readAuto(dir, "2026-11-11").points, auto.points, "notes writes keep the auto record");
+  assert.equal(readAuto(dir, "2026-11-10"), null);
+  assert.equal(dayExists(dir, "2026-11-11"), true);
+  assert.equal(dayExists(dir, "2026-11-10"), false);
+  const md = fs.readFileSync(path.join(dir, "2026-11-11.md"), "utf8");
+  assert.match(md, /## Notes\n\n- \*\*Summary:\*\* s\n- \d\d:\d\d — my own note\n- \d\d:\d\d — another\n\n## Automatic \(updated \d\d:\d\d\)\n\n- Merged o\/r#8\n- Reviewed o\/x#3\n\n## Jira/);
+  const p = loadProgress(dir, "2026-11-11");
+  assert.equal(p.todayAuto.source, "claude");
+  assert.deepEqual(history(dir, 1)[0].auto, { updatedAt: auto.updatedAt, source: "claude", points: auto.points }, "history carries a compact auto");
+  assert.deepEqual(readDayFull(dir, "2026-11-11").auto, auto);
 });
 
 test("previous day includes its entries; readDayFull validates the date", () => {

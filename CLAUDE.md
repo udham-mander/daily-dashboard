@@ -47,6 +47,11 @@ lib/score.js       weeklyScore (Jira done / PRs merged / PRs reviewed per week),
 lib/dates.js       local-calendar helpers: localDate, addDays, weekStart (Monday), dateOf(iso)
 lib/launch.js      "Launch Claude": terminalCommand() per platform, createLauncher() (validates the
                    folder, spawns detached, keeps ~/.daily-dashboard/recent-dirs.json, 5 entries)
+lib/claude.js      runClaude(prompt, {model, maxBudgetUsd, allowedTools}): headless `claude -p` (stdin prompt)
+lib/activity.js    what the user did on a day: activityFromEvents (GitHub event feed, grouped),
+                   activityFromJira (moved/finished/updated), collectActivity (pages the feed)
+lib/auto.js        automatic notes: buildAuto (Claude summary or plain lines), plan() (pure timing
+                   rules), createAutoNotes() (update(date), minute tick, status)
 lib/config.js      ~/.daily-dashboard/config.json with DEFAULTS; env overrides
 lib/fsutil.js      writeFileAtomic (temp + rename), readJson
 public/            index.html + main.js (dashboard), history.html + history.js (/history),
@@ -82,14 +87,17 @@ test/              node:test suites
 | `POST /api/save` `{notes}` | item notes; **merges**: sent keys replace, `""` deletes, unsent keys kept. Returns `{ date, files, notes, entries }` |
 | `POST /api/entries` `{text}` | appends `{ id, at, text }` to today's log. Returns `{ entry, date, files, notes, entries }` |
 | `POST /api/entries/delete` `{id}` | removes a log entry (400 if not found) |
+| `POST /api/auto` `{date?}` | rebuilds the automatic points for today (or `date`): GitHub events + Jira changes → Claude summary. Returns `{ date, auto, autoStatus }`; `auto` is null when nothing was recorded. 404 when the feature is off |
 | `POST /api/launch` `{dir?}` | opens a new terminal running Claude in `dir` (absolute, must exist) or in `claude.defaultDir`; returns `{ ok, dir, defaultDir, command, recent[] }`. 400 for a bad folder, 404 when no launcher is injected. `/api/data` carries the same `claude{defaultDir,command,recent}` |
 | `POST /api/quit` | stops the app ~200 ms after replying |
 
-`/api/data` also returns `todayEntries` and `previous.entries`.
+`/api/data` also returns `todayEntries`, `todayAuto`, `autoStatus{enabled,running,intervalMinutes,workHours,useClaude,lastRun,error}`
+and `previous.{entries,auto}`; `/api/day` and `/api/history` days carry `auto` too.
 
-A day has two kinds of notes: **entries** (the "Today's notes" log, appended, each with an id and
-time) and **notes** (one per item). Note keys: `summary` (legacy daily summary, still accepted),
-`jira:<KEY>`, `pr:<owner/repo>#<n>`, `review:<owner/repo>#<n>`.
+A day has three kinds of notes: **entries** (the "Today's notes" log, appended, each with an id and
+time), **notes** (one per item) and **auto** (`{ updatedAt, source: "claude"|"activity", points[],
+activity[], errors[] }`, written only by the app — never merged into entries/notes). Note keys:
+`summary` (legacy daily summary, still accepted), `jira:<KEY>`, `pr:<owner/repo>#<n>`, `review:<owner/repo>#<n>`.
 Changing a field, key format or endpoint means updating `dd.js` and `SKILL.md` in udham-swe too.
 
 ## Security model (don't weaken)
@@ -110,6 +118,18 @@ Changing a field, key format or endpoint means updating `dd.js` and `SKILL.md` i
 - Jira URLs are built from the key (`normalizeIssues`), never copied from input; issues from
   `claude -p` **and from the on-disk cache** are validated before use. The page renders only
   `http(s)` links (`safeUrl`). `claude -p` runs with `--max-budget-usd 0.10`.
+- **Headless Claude** (`lib/claude.js`) always runs with `--tools ""` (no built-in tools) and
+  either exactly the MCP tools listed in `allowedTools` (Jira: the search tool) or, with none,
+  `--strict-mcp-config` (no MCP servers at all — the automatic-notes summary). The prompts carry
+  text written by others (PR titles, commit messages, issue summaries) as data; the model must
+  have nothing to act with. `--allowedTools` alone would *not* remove tools.
+- **Automatic notes**: the summary call has a $0.05 cap; the answer must be a JSON array of
+  strings (`parsePoints`), else the plain lines are shown. The scheduler only ever *writes the
+  day's `auto` field*; it never touches `entries`/`notes`. A quiet day writes no file; a day with
+  no activity is retried only after the interval (`state.tried[date]`), so GitHub is not polled
+  every minute. When GitHub fails (or the ~300-event feed no longer reaches the day) an existing
+  richer record is kept rather than overwritten. `auto.useClaude` defaults to
+  `jira.mode === "claude"`, so token-mode installs never spawn `claude`.
 - **Launching Claude** spawns a terminal: the folder must be absolute and an existing directory,
   and may not contain shell/cmd metacharacters (`" & | < > ^ % ! \` $ ;` or control chars) — it is
   refused, not escaped. The process is spawned with an argument array (no `shell: true`); on
@@ -136,6 +156,10 @@ Changing a field, key format or endpoint means updating `dd.js` and `SKILL.md` i
   The day file stores only what finished *that day* (`doneOn`), never the full lists; because
   that snapshot is taken at the day's last write, `/api/day` and `/api/history` top it up from
   live data for days still inside the window (`mergeDone`).
+- **Scheduler wiring** (`app.js`): `createAutoNotes` reads the server's GitHub cache through
+  closures (`server.github()`, `server.refreshGithub`) and starts after the first data load; the
+  timer is `unref`'d. `plan()` is pure — put new timing rules there and test them in
+  `test/auto.test.js`.
 - `merge()` returns a `structuredClone` of the defaults — never hand out `DEFAULTS` sub-objects
   (an earlier `{ ...base }` let `loadConfig` mutate `DEFAULTS.jira`).
 - **Notes have two writers** (the page and Claude). The page only sends notes edited in that

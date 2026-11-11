@@ -6,7 +6,7 @@ let selected = null;    // date string
 const cache = new Map(); // date -> full day from /api/day
 
 const noteCount = (d) => (d.entries?.length ?? 0) + Object.keys(d.notes ?? {}).length;
-const text = (d) => [...(d.entries ?? []).map((e) => e.text), ...Object.values(d.notes ?? {})].join("\n").toLowerCase();
+const text = (d) => [...(d.entries ?? []).map((e) => e.text), ...(d.auto?.points ?? []), ...Object.values(d.notes ?? {})].join("\n").toLowerCase();
 
 function renderList() {
   const q = $("search").value.trim().toLowerCase();
@@ -29,6 +29,13 @@ function notesBlock(day) {
     (summary ? `<li class="entry"><span class="when">Summary</span><div class="text">${esc(summary)}</div></li>` : "") +
     entries.map((e) => `<li class="entry"><time class="when" datetime="${esc(e.at)}">${esc(timeOf(e.at))}</time><div class="text">${esc(e.text)}</div></li>`).join("") +
     `</ol>`;
+}
+
+function autoBlock(day) {
+  const a = day.auto;
+  if (!a?.points?.length) return "";
+  return `<h3>Automatic <span class="muted">updated ${esc(timeOf(a.updatedAt))} · ${a.source === "claude" ? "summarized by Claude" : "from activity"}</span></h3>
+    <ul class="auto-points">${a.points.map((p) => `<li><span class="text">${esc(p)}</span><span></span></li>`).join("")}</ul>`;
 }
 
 function itemNotesBlock(day) {
@@ -83,7 +90,7 @@ async function select(date, { push = true } = {}) {
         <div class="hint">${pill("info", `${n} note${n === 1 ? "" : "s"}`)}${pill("info", `${day.jira.length} Jira`)}
           ${pill("info", `${day.github.mine.length} PRs`)}${pill("info", `${day.github.toReview.length} to review`)}</div>
       </div>
-      <h3>Notes</h3>${notesBlock(day)}${itemNotesBlock(day)}${doneBlock(day)}${snapshotBlock(day)}
+      <h3>Notes</h3>${notesBlock(day)}${autoBlock(day)}${itemNotesBlock(day)}${doneBlock(day)}${snapshotBlock(day)}
       <p class="muted small">Saved ${day.savedAt ? new Date(day.savedAt).toLocaleString() : "?"} · file <code>${esc(day.date)}.md</code></p>`;
   } catch (e) {
     pane.innerHTML = `<div class="banner bad">${icon("alert")}${esc(e.message)}</div>`;

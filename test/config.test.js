@@ -35,7 +35,8 @@ test("validateConfig rejects values that could reach a command line or URL", () 
     const c = valid();
     Object.assign(c.jira, patch.jira ?? {});
     Object.assign(c.claude, patch.claude ?? {});
-    Object.assign(c, { ...patch, jira: c.jira, claude: c.claude });
+    Object.assign(c.auto, patch.auto ?? {});
+    Object.assign(c, { ...patch, jira: c.jira, claude: c.claude, auto: c.auto });
     assert.throws(() => validateConfig(c, "cfg"), re);
   };
   bad({ port: "4317 & calc" }, /"port"/);
@@ -53,9 +54,22 @@ test("validateConfig rejects values that could reach a command line or URL", () 
   bad({ claude: { defaultDir: "" } }, /claude\.defaultDir/);
   bad({ claude: { command: "claude\nrm -rf" } }, /claude\.command/);
   bad({ claude: { command: "x".repeat(201) } }, /claude\.command/);
+  bad({ auto: { intervalMinutes: 1 } }, /auto\.intervalMinutes/);
+  bad({ auto: { workHours: "9-17" } }, /auto\.workHours/);
+  bad({ auto: { workHours: "18:00-09:00" } }, /auto\.workHours/);
+  bad({ auto: { model: "haiku; rm" } }, /auto\.model/);
+  bad({ auto: { enabled: "yes" } }, /auto\.enabled/);
+  bad({ auto: { useClaude: "yes" } }, /auto\.useClaude/);
   assert.doesNotThrow(() => validateConfig(valid(), "cfg"));
   const noDone = valid(); noDone.jira.doneJql = "";
   assert.doesNotThrow(() => validateConfig(noDone, "cfg"), "an empty doneJql disables the done search");
+});
+
+test("auto.useClaude follows jira.mode unless set explicitly", () => {
+  assert.equal(loadConfig({ env: {}, file: tmpFile() }).auto.useClaude, true, "default: Jira via Claude → summaries via Claude");
+  assert.equal(loadConfig({ env: {}, file: tmpFile(JSON.stringify({ jira: { mode: "token" } })) }).auto.useClaude, false, "token mode: no Claude call");
+  assert.equal(loadConfig({ env: {}, file: tmpFile(JSON.stringify({ jira: { mode: "token" }, auto: { useClaude: true } })) }).auto.useClaude, true);
+  assert.equal(loadConfig({ env: {}, file: tmpFile(JSON.stringify({ auto: { useClaude: false } })) }).auto.useClaude, false);
 });
 
 test("loadConfig fills {days} in jira.doneJql from scoreWeeks", () => {

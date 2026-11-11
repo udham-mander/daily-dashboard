@@ -43,18 +43,32 @@ function updateSaveButton() {
 }
 
 // ---------- today's notes (log) ----------
+// One list, newest first: the user's own entries (time, deletable) and the automatic points
+// (a small icon instead of a time; built from GitHub/Jira activity, never editable here).
 function renderToday() {
   const entries = DATA.todayEntries ?? [];
   const notes = DATA.todayNotes ?? {};
+  const auto = DATA.todayAuto;
+  const autoPoints = auto?.points ?? [];
   const itemKeys = Object.keys(notes).filter((k) => k !== "summary");
 
+  const rows = [
+    ...entries.map((e) => ({ at: e.at, html: `<li class="entry"><time class="when" datetime="${esc(e.at)}">${esc(timeOf(e.at))}</time>
+      <div class="text">${esc(e.text)}</div>
+      <button class="icon-btn" data-del="${esc(e.id)}" title="Delete note" aria-label="Delete note">${icon("trash")}</button></li>` })),
+    ...autoPoints.map((p) => ({ at: auto.updatedAt, html: `<li class="entry is-auto" title="Automatic — from your GitHub and Jira activity (updated ${esc(timeOf(auto.updatedAt))})">
+      <span class="when">${icon("bot", "i auto-ico")}<span class="visually-hidden">Automatic</span></span><div class="text">${esc(p)}</div><span></span></li>` })),
+  ].sort((a, b) => b.at.localeCompare(a.at));
   $("entries").innerHTML =
     (notes.summary ? `<li class="entry"><span class="when">Summary</span><div class="text">${esc(notes.summary)}</div>
       <button class="icon-btn" data-del-summary title="Delete">${icon("trash")}</button></li>` : "") +
-    entries.toReversed().map((e) => `<li class="entry"><time class="when" datetime="${esc(e.at)}">${esc(timeOf(e.at))}</time>
-      <div class="text">${esc(e.text)}</div>
-      <button class="icon-btn" data-del="${esc(e.id)}" title="Delete note" aria-label="Delete note">${icon("trash")}</button></li>`).join("");
-  if (!entries.length && !notes.summary) $("entries").innerHTML = '<li class="empty">No notes yet today — add the first one above.</li>';
+    rows.map((r) => r.html).join("") +
+    (!rows.length && !notes.summary ? '<li class="empty">No notes yet today — click Add, or they appear here on their own.</li>' : "");
+
+  // Problems building the automatic points: one muted line, only when there is one.
+  const problem = auto?.errors?.length ? auto.errors.join(" · ") : DATA.autoStatus?.error;
+  $("autoNote").hidden = !problem;
+  $("autoNote").innerHTML = problem ? `${icon("alert")} ${esc(problem)}` : "";
 
   $("itemNotesToday").innerHTML = itemKeys.length
     ? `<h3>Notes on items</h3><ul class="item-notes">${itemKeys.map((k) => {
@@ -63,63 +77,33 @@ function renderToday() {
         return `<li><span class="key">${label}</span>${d.title ? ` <span class="muted">${esc(d.title)}</span>` : ""}<div class="text">${esc(notes[k])}</div></li>`;
       }).join("")}</ul>` : "";
 
-  renderAuto();
-
   const p = DATA.previous;
-  const prevCount = p ? p.entries.length + Object.keys(p.notes).length : 0;
+  const prevCount = p ? p.entries.length + (p.auto?.points?.length ?? 0) + Object.keys(p.notes).length : 0;
   $("prevDay").innerHTML = p
     ? `${icon("history")} ${esc(longDate(p.date))}: ${prevCount} note${prevCount === 1 ? "" : "s"} · <a href="/history?date=${esc(p.date)}">View previous days →</a>`
     : `${icon("history")} <a href="/history">View previous days →</a>`;
 
-  const total = entries.length + itemKeys.length + (notes.summary ? 1 : 0);
+  const total = entries.length + autoPoints.length + itemKeys.length + (notes.summary ? 1 : 0);
   $("count-today").textContent = total;
-  $("hint-today").innerHTML = entries.length ? pill("good", `last at ${timeOf(entries.at(-1).at)}`, true) : pill("info", "none yet");
+  const hints = (entries.length ? pill("good", `last at ${timeOf(entries.at(-1).at)}`, true) : "") +
+    (autoPoints.length ? pill("info", `${autoPoints.length} automatic`) : "");
+  $("hint-today").innerHTML = hints || pill("info", "none yet");
   renderTiles();
 }
 
-// Automatic points: built from the user's GitHub/Jira activity (summarized by Claude when
-// enabled) every couple of hours. Kept apart from their own entries; "+" copies one into the
-// composer so it can become a real note.
-function renderAuto() {
-  const st = DATA.autoStatus ?? { enabled: false };
-  const a = DATA.todayAuto;
-  if (!st.enabled) { $("auto").innerHTML = ""; return; }
-  const hours = st.intervalMinutes >= 60 ? `${+(st.intervalMinutes / 60).toFixed(1)} h` : `${st.intervalMinutes} min`;
-  const when = a?.updatedAt ? `updated ${timeOf(a.updatedAt)} · ${a.source === "claude" ? "summarized by Claude" : "from your activity"}`
-    : `from your GitHub and Jira activity, every ${hours} (${st.workHours})`;
-  const points = a?.points ?? [];
-  $("auto").innerHTML = `<h3>Automatic <span class="when muted">${esc(when)}</span>
-      <button class="btn small ghost" id="autoBtn" ${st.running ? "disabled" : ""} title="Rebuild today's automatic points now">${icon("refresh", st.running ? "i spin" : "i")}<span>${st.running ? "Updating…" : "Update now"}</span></button></h3>` +
-    (points.length
-      ? `<ul class="auto-points">${points.map((p) => `<li><span class="text">${esc(p)}</span>
-          <button class="icon-btn" data-promote="${esc(p)}" title="Copy into a new note" aria-label="Copy into a new note">${icon("plus")}</button></li>`).join("")}</ul>`
-      : `<p class="empty small">${a ? "Nothing recorded yet today." : "Not built yet today."}</p>`) +
-    (a?.errors?.length ? `<p class="note-line">${icon("alert")} ${esc(a.errors.join(" · "))}</p>`
-      : st.error ? `<p class="note-line">${icon("alert")} ${esc(st.error)}</p>` : "") +
-    scheduleLine(a, st);
+// The text box is shown only on demand (Add button, the N key, or the tile) and closed again
+// after a note is added; a draft typed earlier is kept in the browser.
+function openComposer() {
+  $("sec-today").open = true;
+  $("composer").hidden = false;
+  $("newBtn").hidden = true;
+  const box = $("entryText");
+  autosize(box);
+  box.focus({ preventScroll: false });
 }
-
-// "Saves the day automatically at 17:00; yesterday is topped up the next morning" — from the config.
-function scheduleLine(a, st) {
-  if (a?.eodSavedAt) return `<p class="note-line">${icon("check")} Day saved automatically at ${esc(timeOf(a.eodSavedAt))} (with fresh data)</p>`;
-  const parts = [];
-  if (st.saveAt) parts.push(`Saves the day automatically at ${st.saveAt}`);
-  if (st.catchupDays === 1) parts.push("yesterday is topped up the next morning");
-  else if (st.catchupDays > 1) parts.push(`the previous ${st.catchupDays} days are topped up each morning`);
-  return parts.length ? `<p class="note-line">${icon("save")} ${esc(parts.join("; "))}</p>` : "";
-}
-
-async function updateAuto() {
-  const btn = $("autoBtn");
-  if (btn) { btn.disabled = true; btn.innerHTML = `${icon("refresh", "i spin")}<span>Updating…</span>`; }
-  try {
-    const r = await api("/api/auto", {});
-    Object.assign(DATA, { todayAuto: r.auto, autoStatus: r.autoStatus });
-    toast(r.auto ? `Automatic points updated (${r.auto.points.length})` : "Nothing recorded today yet");
-  } catch (e) {
-    toast(`Could not update: ${e.message}`, "alert");
-  }
-  renderAuto();
+function closeComposer() {
+  $("composer").hidden = true;
+  $("newBtn").hidden = false;
 }
 
 async function addEntry(e) {
@@ -134,12 +118,13 @@ async function addEntry(e) {
     box.value = ""; autosize(box);
     store.del(`dd-entry-draft`);
     renderToday();
+    closeComposer();
     toast("Note added");
   } catch (err) {
     toast(`Could not add the note: ${err.message}`, "alert");
+    box.focus();
   } finally {
     $("addBtn").disabled = false;
-    box.focus();
   }
 }
 
@@ -421,6 +406,10 @@ async function quit() {
 // ---------- wiring ----------
 $("historyLink").innerHTML = `${icon("history")}<span>History</span>`;
 $("addBtn").innerHTML = `${icon("plus")}<span>Add</span>`;
+$("newBtn").innerHTML = `${icon("plus")}<span>Add</span>`;
+// The Add button sits in the section header: it must not toggle the section.
+$("newBtn").addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); openComposer(); });
+$("cancelBtn").addEventListener("click", closeComposer);
 $("quitBtn").innerHTML = `${icon("power")}<span>Quit</span>`;
 $("refreshBtn").addEventListener("click", () => load({ refresh: true }));
 $("launchBtn").innerHTML = `${icon("terminal")}<span>Launch Claude</span>`;
@@ -438,24 +427,15 @@ initTheme($("themeSel"));
 // Typing a new note: keep a draft, grow the box, Ctrl+Enter adds it.
 $("entryText").value = store.get("dd-entry-draft") ?? "";
 $("entryText").addEventListener("input", (e) => { store.set("dd-entry-draft", e.target.value); autosize(e.target); });
-$("entryText").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) addEntry(e); });
+$("entryText").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) addEntry(e);
+  else if (e.key === "Escape") { e.preventDefault(); closeComposer(); $("newBtn").focus(); }
+});
 
 $("entries").addEventListener("click", (e) => {
   const btn = e.target.closest("button");
   if (btn?.dataset.del) deleteEntry(btn.dataset.del);
   else if (btn?.hasAttribute("data-del-summary")) deleteEntry("summary");
-});
-$("auto").addEventListener("click", (e) => {
-  const btn = e.target.closest("button");
-  if (!btn) return;
-  if (btn.id === "autoBtn") updateAuto();
-  else if (btn.dataset.promote !== undefined) {
-    const box = $("entryText");
-    box.value = (box.value.trim() ? `${box.value.trimEnd()}\n` : "") + btn.dataset.promote;
-    store.set("dd-entry-draft", box.value);
-    autosize(box);
-    box.focus();
-  }
 });
 
 // Item note boxes: track unsaved edits ("" is kept: it deletes that note on Save).
@@ -480,7 +460,6 @@ for (const t of document.querySelectorAll(".tile")) {
     const sec = $(t.dataset.target);
     sec.open = true;
     sec.scrollIntoView({ behavior: "smooth", block: "start" });
-    if (sec.id === "sec-today") $("entryText").focus({ preventScroll: true });
   });
 }
 
@@ -494,7 +473,7 @@ document.addEventListener("keydown", (e) => {
   else if (key === "e") $("expandAll").click();
   else if (key === "c") $("collapseAll").click();
   else if (key === "h") location.href = "/history";
-  else if (key === "n") { e.preventDefault(); $("sec-today").open = true; $("entryText").focus(); }
+  else if (key === "n") { e.preventDefault(); openComposer(); }
 });
 
 setRefreshBusy(false);

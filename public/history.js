@@ -5,7 +5,7 @@ let DAYS = [];          // from /api/history (notes + entries + counts per day)
 let selected = null;    // date string
 const cache = new Map(); // date -> full day from /api/day
 
-const noteCount = (d) => (d.entries?.length ?? 0) + Object.keys(d.notes ?? {}).length;
+const noteCount = (d) => (d.entries?.length ?? 0) + (d.auto?.points?.length ?? 0) + Object.keys(d.notes ?? {}).length;
 const text = (d) => [...(d.entries ?? []).map((e) => e.text), ...(d.auto?.points ?? []), ...Object.values(d.notes ?? {})].join("\n").toLowerCase();
 
 function renderList() {
@@ -13,7 +13,7 @@ function renderList() {
   const shown = q ? DAYS.filter((d) => text(d).includes(q)) : DAYS;
   $("days").innerHTML = shown.length ? shown.map((d) => {
     const n = noteCount(d);
-    const first = d.entries?.[0]?.text ?? d.notes?.summary ?? Object.values(d.notes ?? {})[0] ?? "";
+    const first = d.entries?.[0]?.text ?? d.auto?.points?.[0] ?? d.notes?.summary ?? Object.values(d.notes ?? {})[0] ?? "";
     return `<li><button class="day${d.date === selected ? " active" : ""}" data-date="${esc(d.date)}">
       <span class="day-date">${esc(longDate(d.date, { weekday: "short", month: "short", day: "numeric" }))}</span>
       <span class="day-count">${n}</span>
@@ -21,21 +21,21 @@ function renderList() {
   }).join("") : `<li class="empty">${q ? "No days match your search." : "Nothing saved yet."}</li>`;
 }
 
+// One list like the dashboard's: the user's entries with their time, the automatic points
+// (GitHub/Jira activity) with a small icon, newest first.
 function notesBlock(day) {
   const entries = day.entries ?? [];
+  const auto = day.auto;
   const summary = day.notes?.summary;
-  if (!entries.length && !summary) return '<p class="empty">No notes logged this day.</p>';
+  const rows = [
+    ...entries.map((e) => ({ at: e.at, html: `<li class="entry"><time class="when" datetime="${esc(e.at)}">${esc(timeOf(e.at))}</time><div class="text">${esc(e.text)}</div></li>` })),
+    ...(auto?.points ?? []).map((p) => ({ at: auto.updatedAt, html: `<li class="entry is-auto" title="Automatic — from GitHub and Jira activity (updated ${esc(timeOf(auto.updatedAt))})">
+      <span class="when">${icon("bot", "i auto-ico")}<span class="visually-hidden">Automatic</span></span><div class="text">${esc(p)}</div></li>` })),
+  ].sort((a, b) => b.at.localeCompare(a.at));
+  if (!rows.length && !summary) return '<p class="empty">No notes logged this day.</p>';
   return `<ol class="entries">` +
     (summary ? `<li class="entry"><span class="when">Summary</span><div class="text">${esc(summary)}</div></li>` : "") +
-    entries.map((e) => `<li class="entry"><time class="when" datetime="${esc(e.at)}">${esc(timeOf(e.at))}</time><div class="text">${esc(e.text)}</div></li>`).join("") +
-    `</ol>`;
-}
-
-function autoBlock(day) {
-  const a = day.auto;
-  if (!a?.points?.length) return "";
-  return `<h3>Automatic <span class="muted">updated ${esc(timeOf(a.updatedAt))} · ${a.source === "claude" ? "summarized by Claude" : "from activity"}</span></h3>
-    <ul class="auto-points">${a.points.map((p) => `<li><span class="text">${esc(p)}</span><span></span></li>`).join("")}</ul>`;
+    rows.map((r) => r.html).join("") + `</ol>`;
 }
 
 function itemNotesBlock(day) {
@@ -90,7 +90,7 @@ async function select(date, { push = true } = {}) {
         <div class="hint">${pill("info", `${n} note${n === 1 ? "" : "s"}`)}${pill("info", `${day.jira.length} Jira`)}
           ${pill("info", `${day.github.mine.length} PRs`)}${pill("info", `${day.github.toReview.length} to review`)}</div>
       </div>
-      <h3>Notes</h3>${notesBlock(day)}${autoBlock(day)}${itemNotesBlock(day)}${doneBlock(day)}${snapshotBlock(day)}
+      <h3>Notes</h3>${notesBlock(day)}${itemNotesBlock(day)}${doneBlock(day)}${snapshotBlock(day)}
       <p class="muted small">Saved ${day.savedAt ? new Date(day.savedAt).toLocaleString() : "?"} · file <code>${esc(day.date)}.md</code></p>`;
   } catch (e) {
     pane.innerHTML = `<div class="banner bad">${icon("alert")}${esc(e.message)}</div>`;

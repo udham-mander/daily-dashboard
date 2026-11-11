@@ -120,11 +120,14 @@ Changing a field, key format or endpoint means updating `dd.js` and `SKILL.md` i
 - Jira URLs are built from the key (`normalizeIssues`), never copied from input; issues from
   `claude -p` **and from the on-disk cache** are validated before use. The page renders only
   `http(s)` links (`safeUrl`). `claude -p` runs with `--max-budget-usd 0.10`.
-- **Headless Claude** (`lib/claude.js`) always runs with `--tools ""` (no built-in tools) and
-  either exactly the MCP tools listed in `allowedTools` (Jira: the search tool) or, with none,
-  `--strict-mcp-config` (no MCP servers at all — the automatic-notes summary). The prompts carry
-  text written by others (PR titles, commit messages, issue summaries) as data; the model must
-  have nothing to act with. `--allowedTools` alone would *not* remove tools.
+- **Headless Claude** (`lib/claude.js`) always denies every built-in tool
+  (`--disallowedTools` with `BUILTIN_DENY`; the permission system enforces it even in `-p` mode)
+  and either allows exactly the MCP tools listed in `allowedTools` (Jira: the search tool) or,
+  with none, adds `--tools ""` + `--strict-mcp-config` (no tools, no MCP servers — the summary).
+  The prompts carry text written by others (PR titles, commit messages, issue summaries) as data;
+  the model must have nothing to act with. Do **not** pass `--tools ""` together with MCP tools:
+  in Claude Code 2.1 it hides the MCP tools too (the Jira fetch then answers with a tool call as
+  text). `--allowedTools` alone would *not* remove tools either.
 - **Automatic notes**: the summary call has a $0.05 cap; the answer must be a JSON array of
   strings (`parsePoints`), else the plain lines are shown. The scheduler only ever *writes the
   day's `auto` field*; it never touches `entries`/`notes`. A quiet day writes no file; a day with

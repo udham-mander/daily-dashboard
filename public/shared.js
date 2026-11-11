@@ -58,6 +58,7 @@ const ICONS = {
   search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
   trophy: '<path d="M8 4h8v6a4 4 0 0 1-8 0z"/><path d="M8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4"/><path d="M12 14v3M8 20h8M10 17h4v3h-4z"/>',
   terminal: '<path d="M4 5h16v14H4z"/><path d="m8 9 3 3-3 3M13 15h4"/>',
+  bot: '<rect x="5" y="9" width="14" height="10" rx="3"/><path d="M12 5v4M9 14h.01M15 14h.01M9.5 17h5"/><circle cx="12" cy="4" r="1"/>',
   chevron: '<path d="m6 9 6 6 6-6"/>',
 };
 export const icon = (name, cls = "i") =>

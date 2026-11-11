@@ -61,15 +61,19 @@
     </div>
 
     <details class="sec" id="sec-today">
-      <summary><span class="chev" aria-hidden="true"></span><h2>Today's notes <span class="count" id="count-today">0</span></h2><span class="hint" id="hint-today"></span></summary>
+      <summary><span class="chev" aria-hidden="true"></span><h2>Today's notes <span class="count" id="count-today">0</span></h2><span class="hint" id="hint-today"></span>
+        <button id="newBtn" class="btn small primary" type="button" title="Add a note (N)"></button></summary>
       <div class="body">
-        <form class="composer" id="composer">
+        <form class="composer" id="composer" hidden>
           <label class="visually-hidden" for="entryText">New note</label>
-          <textarea id="entryText" class="note" rows="2" placeholder="What did you just do, decide or get blocked on?  (Ctrl+Enter to add)"></textarea>
-          <button id="addBtn" class="btn primary" type="submit"></button>
+          <textarea id="entryText" class="note" rows="2" placeholder="What did you just do, decide or get blocked on?  (Ctrl+Enter to add, Esc to close)"></textarea>
+          <div class="composer-actions">
+            <button id="addBtn" class="btn primary" type="submit"></button>
+            <button id="cancelBtn" class="btn ghost" type="button">Cancel</button>
+          </div>
         </form>
         <ol class="entries" id="entries"></ol>
-        <div class="auto" id="auto"></div>
+        <p class="note-line" id="autoNote" hidden></p>
         <div id="itemNotesToday"></div>
         <p class="prev-day" id="prevDay"></p>
       </div>

@@ -74,6 +74,7 @@ a:hover { text-decoration: underline; }
 code, kbd { font: 12px/1.4 ui-monospace, "Cascadia Code", Consolas, monospace; }
 kbd { padding: 1px 6px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; background: var(--surface); }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+[hidden] { display: none !important; }   /* the attribute must win over .btn / .composer display rules */
 svg.i { width: 16px; height: 16px; flex: none; }
 
 /* ---------- Top bar ---------- */
@@ -217,10 +218,15 @@ h4 { font-size: 13px; margin: 14px 0 6px; }
 a.btn { text-decoration: none; }
 
 /* ---------- Today's notes ---------- */
-.composer { display: flex; gap: 8px; align-items: flex-start; margin-top: 6px; }
+details.sec > summary > .btn { margin-left: 10px; flex: none; }
+.composer { display: flex; gap: 8px; align-items: flex-start; margin: 6px 0 10px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
 .composer .note { margin-top: 0; min-height: 60px; background: var(--surface-2); }
-.composer .btn { height: 38px; flex: none; }
-.entries { list-style: none; margin: 12px 0 0; padding: 0; }
+.composer-actions { display: flex; flex-direction: column; gap: 6px; flex: none; }
+.composer .btn { height: 34px; }
+.entries { list-style: none; margin: 4px 0 0; padding: 0; }
+.entry.is-auto .when { display: flex; align-items: center; padding-top: 3px; }
+svg.auto-ico { width: 15px; height: 15px; color: var(--accent); opacity: .75; }
+.note-line { margin: 8px 4px 0; color: var(--muted); font-size: 12px; display: flex; gap: 6px; align-items: center; }
 .entry { display: grid; grid-template-columns: 68px 1fr auto; gap: 10px; align-items: start;
   padding: 9px 4px; border-bottom: 1px solid var(--line); }
 .entry:last-child { border-bottom: 0; }
@@ -234,19 +240,6 @@ a.btn { text-decoration: none; }
 .item-notes li { padding: 8px 4px; border-bottom: 1px solid var(--line); }
 .item-notes li:last-child { border-bottom: 0; }
 .prev-day { display: flex; align-items: center; gap: 6px; margin: 14px 0 0; color: var(--muted); font-size: 12px; }
-
-/* ---------- Automatic notes ---------- */
-.auto h3 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.auto h3 .when { text-transform: none; letter-spacing: 0; font-weight: 500; }
-.auto h3 .btn { margin-left: auto; text-transform: none; letter-spacing: 0; }
-.auto-points { list-style: none; margin: 0; padding: 0; }
-.auto-points li { display: grid; grid-template-columns: 14px 1fr auto; gap: 10px; align-items: start; padding: 7px 4px; border-bottom: 1px solid var(--line); }
-.auto-points li:last-child { border-bottom: 0; }
-.auto-points li::before { content: ""; width: 6px; height: 6px; margin: 8px 0 0 2px; border-radius: 50%; background: var(--accent); opacity: .7; }
-.auto-points .text { white-space: pre-wrap; overflow-wrap: anywhere; }
-.auto-points li:hover .icon-btn { opacity: 1; }
-.auto-points .icon-btn:hover { color: var(--accent); background: var(--info-bg); }
-.auto .note-line { margin: 6px 4px 0; color: var(--muted); font-size: 12px; }
 
 /* ---------- Done & score ---------- */
 .score { width: 100%; border-collapse: collapse; margin: 6px 0 4px; font-variant-numeric: tabular-nums; }

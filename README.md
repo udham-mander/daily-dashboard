@@ -29,13 +29,15 @@ and a place to keep **daily notes** — saved as Markdown in a folder you choose
   themselves. A tile shows this week's total. Each day's log also records what was finished that day
 - **Launch Claude** — one click opens a new Claude Code session in a terminal, in your default
   folder; the caret next to it offers the 5 folders you used most recently, or any other folder
-- **Today's notes** — a running log: type what you did, decided or got blocked on and click
-  **Add** (or <kbd>Ctrl</kbd>+<kbd>Enter</kbd>); each entry is saved instantly with its time and
-  can be deleted. The section also lists today's notes on individual items
+- **Today's notes** — one list, newest first. Click **Add** (or press <kbd>N</kbd>), type what you
+  did, decided or got blocked on, and confirm with **Add** or <kbd>Ctrl</kbd>+<kbd>Enter</kbd>; each
+  entry is saved instantly with its time and can be deleted. The section also lists today's notes
+  on individual items
 - **Automatic points** — every 2 hours (within work hours) the app turns what you actually did —
-  pushes, PRs opened/merged, reviews, comments, Jira issues moved or finished — into a few bullets
-  under Today's notes, summarized by Claude (or listed plainly with `auto.useClaude: false`).
-  They stay apart from your own notes; **+** copies one into the composer, **Update now** rebuilds them
+  pushes, PRs opened/merged, reviews, comments, Jira issues moved or finished — into a few bullets,
+  summarized by Claude (or listed plainly with `auto.useClaude: false`). They appear in the same
+  list, marked with a small robot icon instead of a time, and are never edited by you or mixed into
+  your own entries (`dd.js auto` rebuilds them on demand)
 - **Saves itself at 5 pm** — at `auto.saveAt` the app refreshes GitHub and Jira and writes the day's
   file with fresh data, whether or not you pressed anything. When you start it the next morning
   (or it runs past midnight) it tops up **yesterday's** automatic points with whatever came after
@@ -78,8 +80,8 @@ and start the app again (until then the page shows a reminder and GitHub data on
 | Reopen the page | Click the icon again — it reuses the running app |
 | Run in a terminal | `npm start` (or `node app.js --no-open`); logs stay in the terminal |
 | Refresh | **↻ Refresh** or <kbd>R</kbd>. GitHub is instant; Jira takes ~20 s and fills in when ready |
-| Log a note | <kbd>N</kbd> (or open **Today's notes**), type, then **Add** / <kbd>Ctrl</kbd>+<kbd>Enter</kbd> — saved immediately |
-| Automatic points | Built on their own every 2 h; **Update now** in Today's notes rebuilds them; **+** copies one into a note |
+| Log a note | **Add** in the Today's notes header (or <kbd>N</kbd>), type, then **Add** / <kbd>Ctrl</kbd>+<kbd>Enter</kbd> — saved immediately; <kbd>Esc</kbd> closes the box |
+| Automatic points | Appear in the same list on their own every 2 h, marked with a robot icon; rebuild with `dd.js auto` if needed |
 | Save notes on items | **Save notes** or <kbd>Ctrl</kbd>+<kbd>S</kbd>. Unsaved item notes are kept in the browser until you save |
 | Start a Claude session | **Launch Claude** or <kbd>L</kbd> opens a new terminal running `claude` in your default folder; the **▾** caret lists recent folders and takes any other path |
 | See previous days | **History** in the header or <kbd>H</kbd>; <kbd>Esc</kbd> goes back |

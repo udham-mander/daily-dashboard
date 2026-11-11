@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Daily Dashboard</title>
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/main.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <img src="/icon.svg" alt="" width="28" height="28">
+      <div>
+        <h1>Daily Dashboard</h1>
+        <p class="meta" id="meta">Loading…</p>
+      </div>
+    </div>
+    <nav class="actions">
+      <a class="btn ghost" id="historyLink" href="/history" title="Notes from previous days (H)"></a>
+      <label class="visually-hidden" for="themeSel">Theme</label>
+      <select id="themeSel" title="Theme">
+        <option value="auto">Auto</option>
+        <option value="light">Light</option>
+        <option value="dark">Dark</option>
+        <option value="nord">Nord</option>
+        <option value="dracula">Dracula</option>
+        <option value="solarized">Solarized Light</option>
+        <option value="sepia">Sepia</option>
+        <option value="contrast">High contrast</option>
+      </select>
+      <button id="refreshBtn" class="btn" title="Fetch fresh GitHub and Jira data (R)"></button>
+      <button id="saveBtn" class="btn primary" title="Save notes on items (Ctrl+S)"></button>
+      <button id="quitBtn" class="btn ghost" title="Stop the Daily Dashboard app"></button>
+    </nav>
+  </header>
+
+  <main>
+    <div id="banners" role="status"></div>
+
+    <section class="tiles" aria-label="Overview">
+      <button class="tile" data-target="sec-jira" id="tile-jira"></button>
+      <button class="tile" data-target="sec-mine" id="tile-mine"></button>
+      <button class="tile" data-target="sec-review" id="tile-review"></button>
+      <button class="tile" data-target="sec-today" id="tile-today"></button>
+    </section>
+
+    <div class="toolbar">
+      <span class="status" id="status"></span>
+      <button class="btn small ghost" id="expandAll" title="Expand all (E)">Expand all</button>
+      <button class="btn small ghost" id="collapseAll" title="Collapse all (C)">Collapse all</button>
+    </div>
+
+    <details class="sec" id="sec-today">
+      <summary><span class="chev" aria-hidden="true"></span><h2>Today's notes <span class="count" id="count-today">0</span></h2><span class="hint" id="hint-today"></span></summary>
+      <div class="body">
+        <form class="composer" id="composer">
+          <label class="visually-hidden" for="entryText">New note</label>
+          <textarea id="entryText" class="note" rows="2" placeholder="What did you just do, decide or get blocked on?  (Ctrl+Enter to add)"></textarea>
+          <button id="addBtn" class="btn primary" type="submit"></button>
+        </form>
+        <ol class="entries" id="entries"></ol>
+        <div id="itemNotesToday"></div>
+        <p class="prev-day" id="prevDay"></p>
+      </div>
+    </details>
+    <details class="sec" id="sec-jira"></details>
+    <details class="sec" id="sec-mine"></details>
+    <details class="sec" id="sec-review"></details>
+
+    <p class="footnote">Shortcuts: <kbd>R</kbd> refresh · <kbd>N</kbd> new note · <kbd>Ctrl</kbd>+<kbd>S</kbd> save · <kbd>H</kbd> history · <kbd>E</kbd>/<kbd>C</kbd> expand/collapse all</p>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

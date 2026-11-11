@@ -1,0 +1,20 @@
+{
+  "name": "daily-dashboard",
+  "version": "1.0.0",
+  "description": "Local web app: open Jira issues, GitHub PRs with what each is waiting on, PRs awaiting your review, and daily progress notes saved to a folder.",
+  "private": true,
+  "license": "MIT",
+  "author": "Udham Mander <manderudham@gmail.com>",
+  "repository": { "type": "git", "url": "https://github.com/udham-mander/daily-dashboard.git" },
+  "type": "module",
+  "main": "app.js",
+  "engines": { "node": ">=20.11" },
+  "scripts": {
+    "start": "node app.js",
+    "dev": "node --watch app.js --no-open",
+    "test": "node --test",
+    "check": "node --check app.js && node --check lib/server.js && node --check public/main.js && node --check public/history.js && node --check public/shared.js",
+    "install-shortcut": "powershell -NoProfile -ExecutionPolicy Bypass -File install/install.ps1",
+    "uninstall-shortcut": "powershell -NoProfile -ExecutionPolicy Bypass -File install/uninstall.ps1"
+  }
+}

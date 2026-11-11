@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Notes history · Daily Dashboard</title>
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/history.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <img src="/icon.svg" alt="" width="28" height="28">
+      <div>
+        <h1>Notes history</h1>
+        <p class="meta" id="meta">Loading…</p>
+      </div>
+    </div>
+    <nav class="actions">
+      <a class="btn" id="backLink" href="/" title="Back to today (Esc)"></a>
+      <label class="visually-hidden" for="themeSel">Theme</label>
+      <select id="themeSel" title="Theme">
+        <option value="auto">Auto</option>
+        <option value="light">Light</option>
+        <option value="dark">Dark</option>
+        <option value="nord">Nord</option>
+        <option value="dracula">Dracula</option>
+        <option value="solarized">Solarized Light</option>
+        <option value="sepia">Sepia</option>
+        <option value="contrast">High contrast</option>
+      </select>
+    </nav>
+  </header>
+
+  <main class="history">
+    <aside class="days-pane" aria-label="Saved days">
+      <div class="search">
+        <span id="searchIcon"></span>
+        <label class="visually-hidden" for="search">Search notes</label>
+        <input id="search" type="search" placeholder="Search notes…  ( / )" autocomplete="off">
+      </div>
+      <ol class="days" id="days"></ol>
+    </aside>
+    <section class="day-pane" id="day" aria-live="polite"></section>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

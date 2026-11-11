@@ -1,6 +1,17 @@
 import assert from "node:assert/strict";
+import path from "node:path";
 import { test } from "node:test";
-import { BUILTIN_DENY, claudeArgs, resultText } from "../lib/claude.js";
+import { BUILTIN_DENY, claudeArgs, resultText, spawnEnv } from "../lib/claude.js";
+
+test("spawnEnv: the app's own node folder (where npm puts the claude shim) goes first on PATH; the flash hook is silenced", () => {
+  const nodeDir = path.dirname(process.execPath);
+  const e = spawnEnv({ Path: ["C:\\x", "C:\\y"].join(path.delimiter), HOME: "h" });
+  assert.equal(e.Path, [nodeDir, "C:\\x", "C:\\y"].join(path.delimiter), "the existing variable keeps its spelling");
+  assert.deepEqual([e.UDHAM_FLASH_DISABLE, e.HOME, e.PATH], ["1", "h", undefined]);
+  assert.equal(spawnEnv({ PATH: ["C:\\x", nodeDir].join(path.delimiter) }).PATH, ["C:\\x", nodeDir].join(path.delimiter), "already there: unchanged");
+  assert.equal(spawnEnv({}).PATH, nodeDir, "no PATH at all");
+  assert.equal(spawnEnv({ PATH: "/usr/bin" }, "/opt/node/bin/node").PATH, ["/opt/node/bin", "/usr/bin"].join(path.delimiter));
+});
 
 test("claudeArgs: built-ins always denied; MCP tools allowed only when named; otherwise no tools at all", () => {
   const jira = claudeArgs({ model: "haiku", maxBudgetUsd: "0.10", allowedTools: ["mcp__x__search"] });

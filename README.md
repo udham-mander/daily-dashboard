@@ -36,6 +36,10 @@ and a place to keep **daily notes** — saved as Markdown in a folder you choose
   pushes, PRs opened/merged, reviews, comments, Jira issues moved or finished — into a few bullets
   under Today's notes, summarized by Claude (or listed plainly with `auto.useClaude: false`).
   They stay apart from your own notes; **+** copies one into the composer, **Update now** rebuilds them
+- **Saves itself at 5 pm** — at `auto.saveAt` the app refreshes GitHub and Jira and writes the day's
+  file with fresh data, whether or not you pressed anything. When you start it the next morning
+  (or it runs past midnight) it tops up **yesterday's** automatic points with whatever came after
+  that save, so late work is not lost
 - **Notes on items** — a note box on every Jira issue and PR; **Save notes** stores them. The next
   day each box shows what you wrote last time
 - **History page** (`/history`, or <kbd>H</kbd>) — every saved day with its notes, item notes and
@@ -134,6 +138,8 @@ ready, Jira comments or transitions).
 | `auto.enabled` | `true` | Automatic points on/off |
 | `auto.intervalMinutes` | `120` | How often they are rebuilt |
 | `auto.workHours` | `"07:00-20:00"` | Only within these hours (your computer's clock) |
+| `auto.saveAt` | `"17:00"` | End-of-day save with fresh data (`""` = off); runs once between that time and the end of `workHours`, even if the app was started late. Started after work hours? The next morning's top-up covers it |
+| `auto.catchupDays` | `1` | On start and after midnight, top up the previous N days' automatic points (once per day) |
 | `auto.useClaude` | `null` = same as the Jira source | Summarize with headless Claude (`false` = plain activity lines, no Claude call; token-mode installs default to `false`) |
 | `auto.model` | `haiku` | Model for the summary |
 

@@ -91,12 +91,14 @@ test/              node:test suites
 | `POST /api/launch` `{dir?}` | opens a new terminal running Claude in `dir` (absolute, must exist) or in `claude.defaultDir`; returns `{ ok, dir, defaultDir, command, recent[] }`. 400 for a bad folder, 404 when no launcher is injected. `/api/data` carries the same `claude{defaultDir,command,recent}` |
 | `POST /api/quit` | stops the app ~200 ms after replying |
 
-`/api/data` also returns `todayEntries`, `todayAuto`, `autoStatus{enabled,running,intervalMinutes,workHours,useClaude,lastRun,error}`
+`/api/data` also returns `todayEntries`, `todayAuto`,
+`autoStatus{enabled,running,intervalMinutes,workHours,saveAt,catchupDays,useClaude,lastRun,error}`
 and `previous.{entries,auto}`; `/api/day` and `/api/history` days carry `auto` too.
 
 A day has three kinds of notes: **entries** (the "Today's notes" log, appended, each with an id and
 time), **notes** (one per item) and **auto** (`{ updatedAt, source: "claude"|"activity", points[],
-activity[], errors[] }`, written only by the app — never merged into entries/notes). Note keys:
+activity[], errors[], eodSavedAt, catchupAt }`, written only by the app — never merged into
+entries/notes; `eodSavedAt` = the end-of-day save ran, `catchupAt` = the next-day top-up ran). Note keys:
 `summary` (legacy daily summary, still accepted), `jira:<KEY>`, `pr:<owner/repo>#<n>`, `review:<owner/repo>#<n>`.
 Changing a field, key format or endpoint means updating `dd.js` and `SKILL.md` in udham-swe too.
 
@@ -156,10 +158,19 @@ Changing a field, key format or endpoint means updating `dd.js` and `SKILL.md` i
   The day file stores only what finished *that day* (`doneOn`), never the full lists; because
   that snapshot is taken at the day's last write, `/api/day` and `/api/history` top it up from
   live data for days still inside the window (`mergeDone`).
-- **Scheduler wiring** (`app.js`): `createAutoNotes` reads the server's GitHub cache through
-  closures (`server.github()`, `server.refreshGithub`) and starts after the first data load; the
-  timer is `unref`'d. `plan()` is pure — put new timing rules there and test them in
-  `test/auto.test.js`.
+- **Scheduler wiring** (`app.js`): `createAutoNotes` reads the server's window-trimmed data
+  through closures (`server.finished()`, `server.refreshGithub`) and starts after the first data
+  load; the timer is `unref`'d. `plan()` is pure — put new timing rules there and test them in
+  `test/auto.test.js`. Rules, in order, evaluated every minute: (1) *catch-up* of the previous
+  `catchupDays` days, once per calendar day (the stored `auto.catchupAt`, or the in-memory
+  `catchupDone` for a day that stores nothing; a failed attempt retries after the interval);
+  (2) *end of day* between `saveAt` and the end of work hours, once (`auto.eodSavedAt` /
+  `eodDone`; failures retry after the interval; later than work hours it is left to the next
+  morning's catch-up), with a forced GitHub refresh and a Jira refresh if older than 30 min;
+  (3) otherwise the periodic build in work hours. When a tick has several actions the event feed
+  is downloaded once (`fetchFeedUntil`) and shared. Writes to a **past day keep its stored
+  Jira/PR snapshot** (`keepSnapshot`) — only `auto` and `done` change. Marks survive later
+  rebuilds. Times are the computer's local clock.
 - `merge()` returns a `structuredClone` of the defaults — never hand out `DEFAULTS` sub-objects
   (an earlier `{ ...base }` let `loadConfig` mutate `DEFAULTS.jira`).
 - **Notes have two writers** (the page and Claude). The page only sends notes edited in that

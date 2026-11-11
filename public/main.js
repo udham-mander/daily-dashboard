@@ -95,7 +95,18 @@ function renderAuto() {
           <button class="icon-btn" data-promote="${esc(p)}" title="Copy into a new note" aria-label="Copy into a new note">${icon("plus")}</button></li>`).join("")}</ul>`
       : `<p class="empty small">${a ? "Nothing recorded yet today." : "Not built yet today."}</p>`) +
     (a?.errors?.length ? `<p class="note-line">${icon("alert")} ${esc(a.errors.join(" · "))}</p>`
-      : st.error ? `<p class="note-line">${icon("alert")} ${esc(st.error)}</p>` : "");
+      : st.error ? `<p class="note-line">${icon("alert")} ${esc(st.error)}</p>` : "") +
+    scheduleLine(a, st);
+}
+
+// "Saves the day automatically at 17:00; yesterday is topped up the next morning" — from the config.
+function scheduleLine(a, st) {
+  if (a?.eodSavedAt) return `<p class="note-line">${icon("check")} Day saved automatically at ${esc(timeOf(a.eodSavedAt))} (with fresh data)</p>`;
+  const parts = [];
+  if (st.saveAt) parts.push(`Saves the day automatically at ${st.saveAt}`);
+  if (st.catchupDays === 1) parts.push("yesterday is topped up the next morning");
+  else if (st.catchupDays > 1) parts.push(`the previous ${st.catchupDays} days are topped up each morning`);
+  return parts.length ? `<p class="note-line">${icon("save")} ${esc(parts.join("; "))}</p>` : "";
 }
 
 async function updateAuto() {

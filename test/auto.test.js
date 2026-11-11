@@ -3,11 +3,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { buildAuto, createAutoNotes, parsePoints, plan, summaryPrompt } from "../lib/auto.js";
+import { buildAuto, createAutoNotes, freshMemory, parsePoints, plan, summaryPrompt } from "../lib/auto.js";
 import { loadProgress, readDayFull } from "../lib/progress.js";
 
-const cfg = { enabled: true, intervalMinutes: 120, workHours: "07:00-20:00", useClaude: true, model: "haiku" };
+const cfg = { enabled: true, intervalMinutes: 120, workHours: "07:00-20:00", saveAt: "17:00", catchupDays: 1, useClaude: true, model: "haiku" };
 const local = (ymd, hm) => new Date(`${ymd}T${hm}`);
+const iso = (ymd, hm) => local(ymd, hm).toISOString();
 
 test("parsePoints accepts only an array of strings and caps it", () => {
   assert.deepEqual(parsePoints('["a", " b\\n c "]'), ["a", "b c"]);
@@ -46,22 +47,53 @@ test("buildAuto: Claude bullets when they come back, raw activity lines when Cla
   assert.equal(called, 0, "no Claude call for an empty day"); assert.deepEqual(nothing.points, []);
 });
 
-test("plan: a periodic update when the last one is older than the interval, only in work hours", () => {
+test("plan: previous-day catch-up once a day, end-of-day save once in its window, periodic builds in work hours", () => {
+  const D = "2026-11-11", Y = "2026-11-10";
   const types = (s) => plan({ cfg, ...s }).map((a) => `${a.type}:${a.date}`);
-  assert.deepEqual(types({ now: local("2026-11-11", "09:00"), todayAuto: null }), ["auto:2026-11-11"], "first run of the day");
-  const fresh = { updatedAt: local("2026-11-11", "08:30").toISOString() };
-  assert.deepEqual(types({ now: local("2026-11-11", "09:00"), todayAuto: fresh }), [], "updated 30 min ago");
-  assert.deepEqual(types({ now: local("2026-11-11", "10:30"), todayAuto: fresh }), ["auto:2026-11-11"], "2 h later");
-  assert.deepEqual(types({ now: local("2026-11-11", "09:00"), todayAuto: null, lastTriedAt: local("2026-11-11", "08:30").toISOString() }), [], "a quiet day: tried 30 min ago, nothing written, don't hammer GitHub");
-  assert.deepEqual(types({ now: local("2026-11-11", "06:59"), todayAuto: null }), [], "before work hours");
-  assert.deepEqual(types({ now: local("2026-11-11", "20:00"), todayAuto: null }), [], "after work hours");
-  assert.deepEqual(plan({ cfg: { ...cfg, enabled: false }, now: local("2026-11-11", "09:00"), todayAuto: null }), []);
+  const fresh = { updatedAt: iso(D, "08:30") };
+  const saved = { updatedAt: iso(D, "17:00"), eodSavedAt: iso(D, "17:00") };
+  const mem = (patch) => ({ ...freshMemory(), ...patch });
+
+  // First tick of the morning: yesterday first, then today's periodic build.
+  assert.deepEqual(types({ now: local(D, "09:00"), todayAuto: null }), [`catchup:${Y}`, `auto:${D}`]);
+  assert.deepEqual(types({ now: local(D, "09:00"), todayAuto: null, cfg: { ...cfg, catchupDays: 2 } }).slice(0, 2), ["catchup:2026-11-09", `catchup:${Y}`], "oldest first");
+  assert.deepEqual(types({ now: local(D, "09:00"), todayAuto: null, cfg: { ...cfg, catchupDays: 0 } }), [`auto:${D}`]);
+  // Yesterday already topped up today (stored mark, or done in memory for an empty day): not again; topped up on an earlier day: again.
+  assert.deepEqual(types({ now: local(D, "09:00"), todayAuto: fresh, readAuto: () => ({ catchupAt: iso(D, "08:00") }) }), []);
+  assert.deepEqual(types({ now: local(D, "09:00"), todayAuto: fresh, memory: mem({ catchupDone: { [Y]: D } }) }), []);
+  assert.deepEqual(types({ now: local(D, "09:00"), todayAuto: fresh, readAuto: () => ({ catchupAt: iso(Y, "23:59") }) }), [`catchup:${Y}`]);
+  // A failed catch-up: not hammered every minute, retried after the interval.
+  assert.deepEqual(types({ now: local(D, "09:05"), todayAuto: fresh, memory: mem({ catchupTried: { [Y]: iso(D, "09:00") } }) }), []);
+  assert.deepEqual(types({ now: local(D, "11:05"), todayAuto: { updatedAt: iso(D, "10:00") }, memory: mem({ catchupTried: { [Y]: iso(D, "09:00") } }) }), [`catchup:${Y}`]);
+  // Midnight passed while running: the day that just ended is now "yesterday" and gets topped up.
+  assert.deepEqual(types({ now: local("2026-11-12", "00:00"), todayAuto: null, memory: mem({ catchupDone: { [Y]: D } }) }), [`catchup:${D}`]);
+
+  // End of day: at 17:00 and until the end of work hours, once.
+  const done = { catchupDone: { [Y]: D } };
+  assert.deepEqual(types({ now: local(D, "17:00"), todayAuto: fresh, memory: mem(done) }), [`eod:${D}`]);
+  assert.deepEqual(types({ now: local(D, "19:00"), todayAuto: null, memory: mem(done) }), [`eod:${D}`], "started late: still saves the day");
+  assert.deepEqual(types({ now: local(D, "17:30"), todayAuto: saved, memory: mem(done) }), []);
+  assert.deepEqual(types({ now: local(D, "19:30"), todayAuto: saved, memory: mem(done) }), [`auto:${D}`], "after the save, periodic builds resume");
+  assert.deepEqual(types({ now: local(D, "17:05"), todayAuto: null, memory: mem({ ...done, eodDone: { [D]: true }, eodTried: { [D]: iso(D, "17:00") } }) }), [], "quiet day: nothing to save, no retry");
+  assert.deepEqual(types({ now: local(D, "17:05"), todayAuto: fresh, memory: mem({ ...done, eodTried: { [D]: iso(D, "17:00") } }) }), [], "failed a moment ago: wait");
+  assert.deepEqual(types({ now: local(D, "19:05"), todayAuto: fresh, memory: mem({ ...done, eodTried: { [D]: iso(D, "17:00") } }) }), [`eod:${D}`], "failed save is retried after the interval");
+  assert.deepEqual(types({ now: local(D, "20:30"), todayAuto: null, memory: mem(done) }), [], "after work hours: left to tomorrow's catch-up");
+  assert.deepEqual(types({ now: local(D, "17:05"), todayAuto: fresh, memory: mem(done), cfg: { ...cfg, saveAt: "" } }), [`auto:${D}`], "no saveAt = no end-of-day save, just the periodic rule");
+
+  // Periodic rule.
+  assert.deepEqual(types({ now: local(D, "09:00"), todayAuto: null, memory: mem(done) }), [`auto:${D}`], "first run of the day");
+  assert.deepEqual(types({ now: local(D, "09:00"), todayAuto: fresh, memory: mem(done) }), [], "updated 30 min ago");
+  assert.deepEqual(types({ now: local(D, "10:30"), todayAuto: fresh, memory: mem(done) }), [`auto:${D}`], "2 h later");
+  assert.deepEqual(types({ now: local(D, "09:00"), todayAuto: null, memory: mem({ ...done, tried: { [D]: iso(D, "08:30") } }) }), [], "a quiet day: tried 30 min ago, nothing written, don't hammer GitHub");
+  assert.deepEqual(types({ now: local(D, "06:59"), todayAuto: null, memory: mem(done) }), [], "before work hours");
+  assert.deepEqual(types({ now: local(D, "20:00"), todayAuto: saved, memory: mem(done) }), [], "after work hours");
+  assert.deepEqual(plan({ cfg: { ...cfg, enabled: false }, now: local(D, "09:00"), todayAuto: null }), []);
 });
 
 test("createAutoNotes.update writes the day's auto record beside the user's notes; an empty day writes nothing", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dd-auto-"));
   const day = "2026-11-11";
-  const events = [{ type: "PushEvent", created_at: new Date(`${day}T10:00`).toISOString(), repo: { name: "o/api" }, payload: { ref: "refs/heads/main", size: 1, commits: [{ message: "fix" }] } }];
+  const events = [{ type: "PushEvent", created_at: iso(day, "10:00"), repo: { name: "o/api" }, payload: { ref: "refs/heads/main", size: 1, commits: [{ message: "fix" }] } }];
   let refreshed = 0, claudeCalls = 0;
   const jira = { state: { issues: [], done: [], fetchedAt: new Date().toISOString() }, refresh: async () => {} };
   const data = (login = "me") => () => ({ github: { login, mine: [], toReview: [], closed: [], reviewed: [] }, jiraDone: [], since: "2026-01-01" });
@@ -83,6 +115,18 @@ test("createAutoNotes.update writes the day's auto record beside the user's note
   await auto.update(day, { reason: "refresh", refresh: true });
   assert.equal(refreshed, 1, "refresh=true refetches GitHub first");
   assert.equal(claudeCalls, 2);
+
+  // End-of-day and catch-up marks are stamped once and survive later rebuilds.
+  assert.equal(readDayFull(dir, day).auto.eodSavedAt, null);
+  await auto.update(day, { reason: "end of day", refresh: true, markEod: true });
+  const eod = readDayFull(dir, day).auto.eodSavedAt;
+  assert.ok(eod, "end-of-day mark set"); assert.equal(refreshed, 2);
+  await auto.update(day, { reason: "later" });
+  assert.equal(readDayFull(dir, day).auto.eodSavedAt, eod, "a later rebuild keeps the mark");
+  assert.equal(readDayFull(dir, day).auto.catchupAt, null);
+  await auto.update(day, { reason: "catch-up", markCatchup: true });
+  assert.ok(readDayFull(dir, day).auto.catchupAt);
+  assert.equal(readDayFull(dir, day).auto.eodSavedAt, eod);
 
   // An empty day with no file: nothing is written (no weekend files).
   assert.equal(await auto.update("2026-11-08", { reason: "test" }), null);
@@ -108,16 +152,42 @@ test("createAutoNotes.update writes the day's auto record beside the user's note
   assert.equal(kept.kept, true);
   assert.deepEqual(readDayFull(dir, day).auto.points, ["x"], "previous points survive");
   assert.match(flaky.status().error, /gh: 502/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
 
-  // tick() runs the plan: the first tick of a (quiet) day tries once; the next tick does not retry,
-  // and rebuilding another day in between does not reset that guard.
-  let fetches = 0;
-  const t = createAutoNotes({ cfg, progressDir: dir, jira, data: data(), refreshGithub: async () => {},
-    fetchEvents: async () => { fetches++; return events; }, claude: async () => '["again"]', now: () => local("2026-11-13", "09:00") });
-  assert.deepEqual((await t.tick()).map((a) => a.type), ["auto"]);
+test("tick(): one feed download per tick, quiet days not retried, end of day once, midnight catch-up, failures retried later", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dd-tick-"));
+  const D = "2026-11-13";
+  const events = [{ type: "PushEvent", created_at: iso("2026-11-12", "10:00"), repo: { name: "o/api" }, payload: { ref: "refs/heads/main", head: "a", before: "b" } }];
+  const jira = { state: { issues: [], done: [], fetchedAt: new Date().toISOString() }, refresh: async () => {} };
+  let fetches = 0, clock = local(D, "09:00"), failGithub = false;
+  const t = createAutoNotes({ cfg, progressDir: dir, jira, data: () => ({ github: { login: "me", mine: [], toReview: [], closed: [], reviewed: [] }, jiraDone: [], since: "2026-01-01" }),
+    refreshGithub: async () => { if (failGithub) throw new Error("gh: offline"); }, fetchEvents: async () => { fetches++; return events; },
+    claude: async () => '["pushed to main"]', now: () => clock });
+
+  // 09:00, first tick: yesterday (has a push) and today (quiet) — the feed is fetched once for both.
+  assert.deepEqual((await t.tick()).map((a) => `${a.type}:${a.date}`), ["catchup:2026-11-12", `auto:${D}`]);
+  assert.equal(fetches, 1, "one download served both actions");
+  assert.deepEqual(readDayFull(dir, "2026-11-12").auto.points, ["pushed to main"]);
+  assert.ok(readDayFull(dir, "2026-11-12").auto.catchupAt);
+  assert.equal(fs.existsSync(path.join(dir, `${D}.json`)), false, "quiet today: no file");
+  assert.deepEqual(await t.tick(), [], "nothing is retried a minute later");
   assert.equal(fetches, 1);
-  await t.update(day, { reason: "manual" });
+
+  // 17:00: the end-of-day save, once; GitHub is down → retried after the interval, then done.
+  clock = local(D, "17:00"); failGithub = true;
+  assert.deepEqual((await t.tick()).map((a) => a.type), ["eod"]);
+  assert.match(t.status().error, /offline/);
+  clock = local(D, "17:30");
+  assert.deepEqual(await t.tick(), [], "not every minute");
+  clock = local(D, "19:00"); failGithub = false;
+  assert.deepEqual((await t.tick()).map((a) => a.type), ["eod"], "retried after the interval");
+  clock = local(D, "19:30");
+  assert.deepEqual(await t.tick(), [], "quiet day saved (nothing stored) — done for today");
+
+  // Midnight: the day that just ended is topped up once.
+  clock = local("2026-11-14", "00:00");
+  assert.deepEqual((await t.tick()).map((a) => `${a.type}:${a.date}`), [`catchup:${D}`]);
   assert.deepEqual(await t.tick(), []);
-  assert.equal(fetches, 2, "only the manual rebuild fetched again");
   fs.rmSync(dir, { recursive: true, force: true });
 });

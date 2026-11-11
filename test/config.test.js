@@ -60,6 +60,11 @@ test("validateConfig rejects values that could reach a command line or URL", () 
   bad({ auto: { model: "haiku; rm" } }, /auto\.model/);
   bad({ auto: { enabled: "yes" } }, /auto\.enabled/);
   bad({ auto: { useClaude: "yes" } }, /auto\.useClaude/);
+  bad({ auto: { saveAt: "5pm" } }, /auto\.saveAt/);
+  bad({ auto: { saveAt: "21:00" } }, /inside "auto\.workHours"/);
+  bad({ auto: { catchupDays: 30 } }, /auto\.catchupDays/);
+  const noSave = valid(); noSave.auto.saveAt = "";
+  assert.doesNotThrow(() => validateConfig(noSave, "cfg"), '"" turns the end-of-day save off');
   assert.doesNotThrow(() => validateConfig(valid(), "cfg"));
   const noDone = valid(); noDone.jira.doneJql = "";
   assert.doesNotThrow(() => validateConfig(noDone, "cfg"), "an empty doneJql disables the done search");

@@ -84,6 +84,29 @@ test("automatic points live beside the user's notes: setAuto keeps entries, save
   assert.deepEqual(readDayFull(dir, "2026-11-11").auto, auto);
 });
 
+test("writes to a past day keep its stored Jira/PR snapshot and only complete `done`", () => {
+  const at = (ymd, hm = "10:00") => new Date(`${ymd}T${hm}`).toISOString();
+  const day = "2026-11-10";
+  saveProgress(dir, { summary: "as saved" }, jira, github, day);                       // snapshot: PROJ-1 open, o/r#8 mine
+  const todayJira = [{ key: "PROJ-99", summary: "Today's issue", url: "j99", status: "Open", statusCategory: "To Do" }];
+  const todayGh = { login: "me", mine: [], toReview: [], closed: [{ repo: "o/r", number: 5, title: "Merged that evening", url: "u5", merged: true, closedAt: at(day, "22:00") }], reviewed: [] };
+  const auto = { updatedAt: at("2026-11-11", "09:00"), source: "activity", points: ["late push"], activity: [], errors: [] };
+  setAuto(dir, day, auto, todayJira, todayGh, { jiraDone: [], keepSnapshot: true });
+  const d = readDayFull(dir, day);
+  assert.deepEqual(d.jira.map((j) => j.key), ["PROJ-1"], "yesterday's open issues stay yesterday's");
+  assert.equal(d.github.mine.length, 1);
+  assert.deepEqual(d.done.prs.map((p) => p.number), [5], "but what finished that day is completed from live data");
+  assert.deepEqual(d.auto.points, ["late push"]);
+  assert.match(fs.readFileSync(path.join(dir, `${day}.md`), "utf8"), /## Jira \(1\)\n\n- \[PROJ-1\]/);
+  // Without keepSnapshot the current lists are written (today's own file).
+  setAuto(dir, day, auto, todayJira, todayGh, { jiraDone: [] });
+  assert.deepEqual(readDayFull(dir, day).jira.map((j) => j.key), ["PROJ-99"]);
+  // A past day with no file yet: unknown lists stay empty rather than pretending.
+  setAuto(dir, "2026-11-09", auto, todayJira, todayGh, { jiraDone: [], keepSnapshot: true });
+  assert.deepEqual(readDayFull(dir, "2026-11-09").jira, []);
+  assert.deepEqual(readDayFull(dir, "2026-11-09").github.mine, []);
+});
+
 test("previous day includes its entries; readDayFull validates the date", () => {
   addEntry(dir, "yesterday's work", jira, github, "2026-11-10");
   assert.deepEqual(loadProgress(dir, "2026-11-11").previous.entries.map((e) => e.text), ["yesterday's work"]);

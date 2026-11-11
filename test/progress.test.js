@@ -66,7 +66,8 @@ test("entries: add, keep alongside item notes, remove", () => {
 
 test("automatic points live beside the user's notes: setAuto keeps entries, saves keep auto, md shows both", () => {
   addEntry(dir, "my own note", jira, github, "2026-11-11");
-  const auto = { updatedAt: "2026-11-11T08:30:00.000Z", source: "claude", points: ["Merged o/r#8", "Reviewed o/x#3"], activity: [], errors: [] };
+  const auto = { updatedAt: "2026-11-11T08:30:00.000Z", source: "claude", points: ["Merged o/r#8", "Reviewed o/x#3"], activity: [], errors: [],
+    sessions: [{ id: "ed90d947-3142-4fa2-a082-9035b6773aca", title: "Perf report", dir: "C:\\w", folder: "w", startedOn: "2026-11-11", first: "2026-11-11T09:00:00.000Z", last: "2026-11-11T09:40:00.000Z", prompts: 1, live: null }] };
   const r = setAuto(dir, "2026-11-11", auto, jira, github);
   assert.deepEqual(r.auto.points, ["Merged o/r#8", "Reviewed o/x#3"]);
   assert.equal(r.entries.length, 1, "entries untouched");
@@ -77,7 +78,7 @@ test("automatic points live beside the user's notes: setAuto keeps entries, save
   assert.equal(dayExists(dir, "2026-11-11"), true);
   assert.equal(dayExists(dir, "2026-11-10"), false);
   const md = fs.readFileSync(path.join(dir, "2026-11-11.md"), "utf8");
-  assert.match(md, /## Notes\n\n- \*\*Summary:\*\* s\n- \d\d:\d\d — my own note\n- \d\d:\d\d — another\n\n## Automatic \(updated \d\d:\d\d\)\n\n- Merged o\/r#8\n- Reviewed o\/x#3\n\n## Jira/);
+  assert.match(md, /## Notes\n\n- \*\*Summary:\*\* s\n- \d\d:\d\d — my own note\n- \d\d:\d\d — another\n\n## Automatic \(updated \d\d:\d\d\)\n\n- Merged o\/r#8\n- Reviewed o\/x#3\n\n## Claude sessions \(1\)\n\n- \d\d:\d\d–\d\d:\d\d — Perf report \(w, 1 prompt\)\n\n## Jira/);
   const p = loadProgress(dir, "2026-11-11");
   assert.equal(p.todayAuto.source, "claude");
   assert.deepEqual(history(dir, 1)[0].auto, { updatedAt: auto.updatedAt, source: "claude", points: auto.points }, "history carries a compact auto");

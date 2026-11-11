@@ -45,6 +45,11 @@ test("summaryPrompt: activity and details as data, Jira reads only when allowed,
   assert.match(p, /Only the ACTIVITY and the lines marked "Your …" in DETAILS are what the engineer did on 2026-11-11/, "background is never reported as the day's work");
   assert.match(full, /"nudges": from the CURRENT STATE/);
   assert.doesNotMatch(summaryPrompt("2026-11-11", { items, jiraKeys: ["A-1"], site: "" }), /getJiraIssue/, "no site, no tool");
+  // A Claude Code session that day: the prompt says how to treat its prompts (only then).
+  assert.match(p, /GitHub events, Jira changes and Claude Code sessions, in time order/);
+  assert.doesNotMatch(p, /A Claude Code session is the engineer's own work/);
+  assert.match(summaryPrompt("2026-11-11", { items: [...items, { kind: "claude", text: 'Claude Code session "Perf" in x: 09:00–10:00, 3 prompts' }] }),
+    /A Claude Code session is the engineer's own work, done with Claude's help[^\n]*without quoting the prompts and without attributing anything to Claude/);
 });
 
 test("stateSummary writes out open work, waiting reviews and the week's score as data", () => {
@@ -157,10 +162,15 @@ test("createAutoNotes.update writes the day's auto record beside the user's note
   const jira = { state: { issues: [], done: [], fetchedAt: new Date().toISOString() }, refresh: async () => {} };
   const data = (login = "me") => () => ({ github: { login, mine: [], toReview: [], closed: [], reviewed: [] }, jiraDone: [], since: "2026-01-01" });
   const detailCalls = [], prompts = [];
+  // One Claude Code session that day, with its prompts (what the collector returns).
+  const session = { id: "ed90d947-3142-4fa2-a082-9035b6773aca", title: "Perf report", dir: "C:\\w\\ai-shield", folder: "ai-shield", startedOn: day,
+    first: iso(day, "10:30"), last: iso(day, "11:00"), prompts: 2 };
+  const collected = { ...session, texts: ["run the perf test", "write the report"], live: { pid: 1, status: "idle", startedAt: iso(day, "10:30"), lastActivityAt: iso(day, "11:00") } };
   const auto = createAutoNotes({
     cfg, progressDir: dir, jira, data: data(), site: "acme.atlassian.net",
     refreshGithub: async () => { refreshed++; },
     fetchEvents: async () => events,
+    sessions: (date) => ({ day: date === day ? [collected] : [], errors: date === "2026-11-02" ? ["Claude sessions: EACCES"] : [] }),
     details: async (date, items, { login }) => { detailCalls.push({ date, n: items.length, login }); return { text: "### api:main\nYour commits today: \"fix\"", errors: [] }; },
     claude: async (prompt) => { claudeCalls++; prompts.push(prompt); return '{"points": ["Fixed main"], "nudges": ["nothing urgent"]}'; },
     now: () => local(day, "10:00"),
@@ -168,13 +178,16 @@ test("createAutoNotes.update writes the day's auto record beside the user's note
   const r = await auto.update(day, { reason: "test" });
   assert.deepEqual(r.auto.points, ["Fixed main"]);
   assert.deepEqual(r.auto.nudges, ["nothing urgent"], "today gets the agent's take");
-  assert.deepEqual(detailCalls, [{ date: day, n: 1, login: "me" }], "details fetched for the day's items");
-  assert.match(prompts[0], /DETAILS:\n### api:main/);
+  assert.deepEqual(detailCalls, [{ date: day, n: 2, login: "me" }], "details fetched for the day's items");
+  assert.match(prompts[0], /DETAILS:\n### api:main\nYour commits today: "fix"\n\n### Claude Code session "Perf report" \(ai-shield, 10:30–11:00, 2 prompts\)\nYour prompts that day: "run the perf test", "write the report"/);
   assert.match(prompts[0], /CURRENT STATE:/);
   const stored = readDayFull(dir, day);
   assert.equal(stored.auto.source, "claude");
-  assert.deepEqual(stored.auto.activity.map((a) => a.text), ["Pushed 1 commit to api:main: fix"]);
-  assert.match(fs.readFileSync(path.join(dir, `${day}.md`), "utf8"), /## Automatic \(updated \d\d:\d\d\)\n\n- Fixed main\n/);
+  assert.deepEqual(stored.auto.activity.map((a) => a.text), ["Pushed 1 commit to api:main: fix", 'Claude Code session "Perf report" in ai-shield: 10:30–11:00, 2 prompts']);
+  assert.deepEqual(stored.auto.sessions, [session], "the day keeps its sessions: no prompts, no live state");
+  assert.match(fs.readFileSync(path.join(dir, `${day}.md`), "utf8"), /## Automatic \(updated \d\d:\d\d\)\n\n- Fixed main\n\n## Claude sessions \(1\)\n\n- 10:30–11:00 — Perf report \(ai-shield, 2 prompts\)\n/);
+  assert.equal(await auto.update("2026-11-02", { reason: "test" }), null, "no sessions, no events: nothing written");
+  assert.match(auto.status().error, /Claude sessions: EACCES/, "a problem reading the session records is reported");
   assert.deepEqual(loadProgress(dir, day).todayAuto.points, ["Fixed main"]);
   assert.deepEqual(loadProgress(dir, "2026-11-12").previous.auto.points, ["Fixed main"], "yesterday's auto points come along as 'previous'");
 
@@ -219,9 +232,11 @@ test("createAutoNotes.update writes the day's auto record beside the user's note
   assert.equal(await noLogin.update("2026-11-01", { reason: "manual" }), null);
   assert.match(noLogin.status().error, /not signed in/);
 
-  // GitHub down later in the day: the richer record is kept, not replaced by Jira-only lines.
+  // GitHub down later in the day: the richer record is kept, not replaced by Jira-only lines —
+  // and Claude sessions, found either way, do not make the GitHub-less rebuild look richer.
   const flaky = createAutoNotes({ cfg, progressDir: dir, jira, data: data(), refreshGithub: async () => {},
-    fetchEvents: async () => { throw new Error("gh: 502"); }, claude: async () => '["should not be used"]' });
+    fetchEvents: async () => { throw new Error("gh: 502"); }, claude: async () => '["should not be used"]',
+    sessions: () => ({ day: [collected, { ...collected, id: "0f2e5fbc-d326-42d5-8bd6-1aa9e4892f91" }], errors: [] }) });
   const kept = await flaky.update(day, { reason: "scheduled" });
   assert.equal(kept.kept, true);
   assert.deepEqual(readDayFull(dir, day).auto.points, ["x"], "previous points survive");

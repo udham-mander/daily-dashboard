@@ -91,4 +91,9 @@ test("collectActivity pages the event feed until it passes the day, and reports 
   const cut = await collectActivity(DAY, { login: "me", jira: {}, fetchEvents: busy });
   assert.equal(cut.items.length, 300);
   assert.match(cut.errors[0], /GitHub activity: the event feed was cut off/);
+
+  // The day's Claude Code sessions come along as items, in time order with the rest.
+  const sessions = [{ id: "ed90d947-3142-4fa2-a082-9035b6773aca", title: "Perf report", folder: "ai-shield", first: at("10:00"), last: at("12:30"), prompts: 4, texts: ["a"] }];
+  const worked = await collectActivity(DAY, { login: "me", jira: { done: [{ key: "A-1", summary: "s", status: "Done", statusCategoryChangedAt: at("13:00") }] }, fetchEvents: async () => [], sessions });
+  assert.deepEqual(worked.items.map((i) => `${i.kind}: ${i.text}`), ['claude: Claude Code session "Perf report" in ai-shield: 10:00–12:30, 4 prompts', "jira: Finished A-1 (Done): s"]);
 });

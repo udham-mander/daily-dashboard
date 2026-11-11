@@ -60,17 +60,20 @@ const ICONS = {
   terminal: '<path d="M4 5h16v14H4z"/><path d="m8 9 3 3-3 3M13 15h4"/>',
   bot: '<rect x="5" y="9" width="14" height="10" rx="3"/><path d="M12 5v4M9 14h.01M15 14h.01M9.5 17h5"/><circle cx="12" cy="4" r="1"/>',
   chevron: '<path d="m6 9 6 6 6-6"/>',
+  x: '<path d="M6 6l12 12M18 6 6 18"/>',
 };
 export const icon = (name, cls = "i") =>
   `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`;
 
 let toastTimer;
-export function toast(msg, kind = "check") {
+/** A short message; with an `action` ({ label, run }) it also offers one button (e.g. Undo) and stays a little longer. */
+export function toast(msg, kind = "check", action = null) {
   const t = $("toast");
-  t.innerHTML = `${icon(kind)}<span>${esc(msg)}</span>`;
+  t.innerHTML = `${icon(kind)}<span>${esc(msg)}</span>${action ? `<button class="btn small" type="button">${esc(action.label)}</button>` : ""}`;
+  if (action) t.querySelector("button").addEventListener("click", () => { t.classList.remove("show"); action.run(); });
   t.classList.add("show");
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove("show"), 3500);
+  toastTimer = setTimeout(() => t.classList.remove("show"), action ? 7000 : 3500);
 }
 
 /** GET when `body` is undefined, otherwise POST JSON with the header the server requires for writes. */

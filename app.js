@@ -7,6 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { APP_DIR, CONFIG_FILE, loadConfig } from "./lib/config.js";
 import { createAutoNotes } from "./lib/auto.js";
+import { createBlacklist } from "./lib/blacklist.js";
 import { collectGithub, fetchEvents } from "./lib/github.js";
 import { createJiraSource } from "./lib/jira.js";
 import { createLauncher } from "./lib/launch.js";
@@ -54,6 +55,7 @@ const launcher = createLauncher({
 let server;
 const auto = createAutoNotes({
   cfg: cfg.auto, progressDir: cfg.progressDir, jira, fetchEvents, log, site: cfg.jira.site, scoreWeeks: cfg.scoreWeeks,
+  blacklist: createBlacklist(path.join(APP_DIR, "blacklist.json")),   // what the user crossed off the agent's take
   data: () => server.finished(),
   refreshGithub: (force) => server.refreshGithub(force),
 });

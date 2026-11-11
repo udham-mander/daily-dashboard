@@ -166,6 +166,19 @@ main { max-width: 1120px; margin: 0 auto; padding: 22px 28px 48px; }
 @media (max-width: 800px) { .switch .state { display: none; } }
 .agent li { margin: 4px 0; }
 .agent li::marker { color: var(--muted); font-variant-numeric: tabular-nums; }
+.agent li .row { display: flex; align-items: flex-start; gap: 6px; }
+.agent li .text { flex: 1; min-width: 0; }
+.agent li .x { flex: none; opacity: .35; margin: -1px 0 0; }
+.agent li:hover .x, .agent li .x:focus-visible { opacity: 1; }
+.agent .none { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+.agent .head .bl { margin-left: auto; border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 12px; font-weight: 500;
+  text-transform: none; letter-spacing: 0; cursor: pointer; padding: 2px 8px; border-radius: 999px; }
+.agent .head .bl:hover, .agent .head .bl[aria-expanded="true"] { background: var(--surface-2); color: var(--text); }
+.agent .blacklist { list-style: none; margin: 8px 0 0; padding: 8px 0 0; border-top: 1px dashed var(--line); display: flex; flex-wrap: wrap; gap: 6px; }
+.agent .chip { display: inline-flex; align-items: center; gap: 2px; max-width: 100%; padding: 2px 3px 2px 9px; border: 1px solid var(--line); border-radius: 999px; font-size: 12px; color: var(--muted); }
+.agent .chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 280px; }
+.agent .chip .icon-btn:hover { color: var(--good); background: var(--good-bg); }
+.toast .btn { margin-left: 4px; background: var(--bg); color: var(--text); border-color: transparent; }
 
 .toolbar { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; }
 .toolbar .status { flex: 1; color: var(--muted); font-size: 12px; }
@@ -310,7 +323,7 @@ details.snap > summary { cursor: pointer; color: var(--muted); font-weight: 600;
   background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 10px; box-shadow: var(--shadow-lg);
   transition: opacity .2s, transform .2s;
 }
-.toast.show { opacity: 1; transform: translate(-50%, 0); }
+.toast.show { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }   /* its Undo button must be clickable */
 
 /* ---------- Responsive & motion ---------- */
 @media (max-width: 800px) {

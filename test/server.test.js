@@ -9,6 +9,7 @@ import { createLauncher } from "../lib/launch.js";
 import { createServer } from "../lib/server.js";
 
 let server, port, dir, quit = false, agentOn = true;
+const black = [];
 const launched = [], autoCalls = [], saved = [];
 
 // Raw requests so tests can set Host/Origin freely (fetch won't let us forge Host).
@@ -46,8 +47,15 @@ before(async () => {
     launcher: createLauncher({ defaultDir: dir, recentFile: path.join(dir, "recent.json"), run: async (_f, _a, cwd) => { launched.push(cwd); } }),
     auto: {   // a stand-in for createAutoNotes(): records calls, answers like the real one
       update: async (date, opts) => { autoCalls.push([date, opts]); return { auto: { updatedAt: new Date().toISOString(), source: "activity", points: ["did a thing"], errors: [] } }; },
-      status: () => ({ enabled: agentOn, running: false, intervalMinutes: 120, workHours: "07:00-20:00", useClaude: true }),
+      status() { return { enabled: agentOn, running: false, intervalMinutes: 120, workHours: "07:00-20:00", useClaude: true, blacklist: black }; },
       setEnabled(on) { agentOn = on; return this.status(); },
+      dismiss(text) { const entry = { id: `b${black.length + 1}`, refs: [], text, date: null, points: [], at: "" }; black.push(entry); return { entry, added: true, auto: { nudges: [] } }; },
+      restore({ id, text }) {
+        const gone = black.filter((e) => (id !== undefined ? e.id === id : e.text === text));
+        if (!gone.length) return null;
+        for (const e of gone) black.splice(black.indexOf(e), 1);
+        return { entry: gone[0], removed: gone, auto: { nudges: gone.map((e) => e.text) } };
+      },
     },
     saveSetting: (keys, value) => { saved.push([keys, value]); },
     onQuit: () => { quit = true; },
@@ -118,6 +126,31 @@ test("POST /api/agent switches the Activity agent and remembers it in the config
   assert.equal((await write("/api/agent", {})).status, 400);
   assert.equal((await request("GET", "/api/agent")).status, 404, "never a GET");
   assert.equal((await request("POST", "/api/agent", { body: { enabled: false } })).status, 403, "needs x-dd + origin");
+});
+
+test("POST /api/blacklist/add and /remove: the agent's take can be crossed off and put back", async () => {
+  const added = JSON.parse((await write("/api/blacklist/add", { text: "Review dbms#11" })).body);
+  assert.equal(added.entry.text, "Review dbms#11");
+  assert.equal(added.added, true);
+  assert.deepEqual(added.auto, { nudges: [] });
+  assert.equal(added.autoStatus.blacklist.length, 1);
+  assert.equal(JSON.parse((await request("GET", "/api/data")).body).autoStatus.blacklist[0].id, added.entry.id, "/api/data carries the blacklist");
+  assert.equal(JSON.parse((await request("GET", "/api/status")).body).autoStatus.blacklist[0].id, added.entry.id, "/api/status too (no GitHub refresh)");
+  const removed = JSON.parse((await write("/api/blacklist/remove", { id: added.entry.id })).body);
+  assert.deepEqual([removed.removed, removed.auto], [1, { nudges: ["Review dbms#11"] }]);
+  assert.equal(removed.autoStatus.blacklist.length, 0);
+  assert.equal((await write("/api/blacklist/remove", { id: added.entry.id })).status, 400, "unknown id");
+  await write("/api/blacklist/add", { text: "same" }); await write("/api/blacklist/add", { text: "same" });
+  const byText = JSON.parse((await write("/api/blacklist/remove", { text: "same" })).body);
+  assert.equal(byText.removed, 2, "by text: every covering entry");
+  assert.equal((await write("/api/blacklist/remove", { text: "same" })).status, 400);
+  assert.equal((await write("/api/blacklist/remove", {})).status, 400, "neither id nor text");
+  assert.equal((await write("/api/blacklist/remove", { id: 5 })).status, 400);
+  assert.equal((await write("/api/blacklist/add", { text: "" })).status, 400);
+  assert.equal((await write("/api/blacklist/add", { text: 7 })).status, 400);
+  assert.equal((await write("/api/blacklist/add", { text: "x".repeat(301) })).status, 400);
+  assert.equal((await request("POST", "/api/blacklist/add", { body: { text: "x" } })).status, 403, "needs x-dd + origin");
+  assert.equal((await request("GET", "/api/blacklist/add")).status, 404, "never a GET");
 });
 
 test("a saved day's 'done' is topped up from live data while the day is inside the score window", async () => {
@@ -199,6 +232,7 @@ test("a refresh (which runs Claude) is POST-only; GET /api/data never triggers i
     assert.equal(refreshes, 1);
     assert.equal(await req("POST", "/api/launch", hdrs, {}), 404, "no launcher injected = feature off");
     assert.equal(await req("POST", "/api/auto", hdrs, {}), 404, "no auto notes injected = feature off");
+    assert.equal(await req("POST", "/api/blacklist/add", hdrs, { text: "x" }), 404, "no blacklist = feature off, not a 500");
   } finally {
     srv.close(); fs.rmSync(dir2, { recursive: true, force: true });
   }

@@ -106,14 +106,52 @@ function linkRefs(text, map) {
   return esc(text).replace(/\b([A-Z][A-Z0-9]+-\d+|[A-Za-z0-9_.-]+#\d+)\b/g, (m) =>
     map.has(m) ? `<a href="${esc(safeUrl(map.get(m)))}" target="_blank" rel="noopener">${m}</a>` : m);
 }
+// Each point has a cross: it goes, and what it names (or its wording) is blacklisted, so the
+// agent stops bringing it up. The blacklist can be opened from the card and entries put back.
+let showBlacklist = false;
+const blacklistLabel = (e) => (e.refs?.length ? e.refs.join(", ") : `"${e.text.length > 70 ? `${e.text.slice(0, 70)}…` : e.text}"`);
 function renderAgent() {
-  const a = DATA.todayAuto;
-  const nudges = DATA.autoStatus?.enabled ? (a?.nudges ?? []) : [];
-  $("agent").hidden = !nudges.length;
-  if (!nudges.length) return;
+  const a = DATA.todayAuto, st = DATA.autoStatus ?? {};
+  const takeOn = Boolean(st.enabled && st.nudges && st.useClaude);   // the take exists only with Claude and nudges on
+  const nudges = takeOn ? (a?.nudges ?? []) : [];
+  const black = takeOn && a ? (st.blacklist ?? []) : [];
+  const card = $("agent");
+  card.hidden = !nudges.length && !black.length;
+  if (card.hidden) return;
   const map = refLinks();
-  $("agent").innerHTML = `<div class="head">${icon("bot")}Agent's take <span class="when">· ${esc(timeOf(a.updatedAt))}</span></div>
-    <ol>${nudges.map((n) => `<li>${linkRefs(n, map)}</li>`).join("")}</ol>`;
+  card.innerHTML = `<div class="head">${icon("bot")}Agent's take <span class="when">· ${esc(timeOf(a.updatedAt))}</span>
+      ${black.length ? `<button class="bl" id="blacklistBtn" type="button" aria-expanded="${showBlacklist}" title="What you crossed off — the agent will not bring these up again. Click to see them and put any back.">${black.length} blacklisted</button>` : ""}</div>
+    ${nudges.length
+      ? `<ol>${nudges.map((n) => `<li><div class="row"><span class="text">${linkRefs(n, map)}</span>
+          <button class="icon-btn x" type="button" data-dismiss="${esc(n)}" title="Not important: remove it and blacklist what it names, so the agent does not bring it up again" aria-label="Remove and blacklist">${icon("x")}</button></div></li>`).join("")}</ol>`
+      : `<p class="none">Nothing on the list right now.</p>`}
+    ${showBlacklist && black.length ? `<ul class="blacklist" aria-label="Blacklist">${[...black].reverse().map((e) => `<li class="chip" title="${esc(e.text)}"><span>${esc(blacklistLabel(e))}</span>
+          <button class="icon-btn" type="button" data-restore="${esc(e.id)}" title="Take it off the blacklist${e.date === DATA.today && e.points?.length ? ` and put the point${e.points.length > 1 ? "s" : ""} back` : ""}" aria-label="Restore">${icon("x")}</button></li>`).join("")}</ul>` : ""}`;
+}
+
+async function dismissNudge(text) {
+  try {
+    const r = await api("/api/blacklist/add", { text });
+    DATA.todayAuto = r.auto ?? DATA.todayAuto;
+    DATA.autoStatus = r.autoStatus;
+    renderAgent();
+    // Undo only when this click added the entry; otherwise it would take an older entry off instead.
+    if (r.added) toast(`Crossed off · ${blacklistLabel(r.entry)} blacklisted`, "check", { label: "Undo", run: () => restoreNudge(r.entry.id) });
+    else toast(`Crossed off · ${blacklistLabel(r.entry)} was already blacklisted`);
+  } catch (e) {
+    toast(`Could not blacklist it: ${e.message}`, "alert");
+  }
+}
+async function restoreNudge(id) {
+  try {
+    const r = await api("/api/blacklist/remove", { id });
+    DATA.todayAuto = r.auto ?? DATA.todayAuto;
+    DATA.autoStatus = r.autoStatus;
+    renderAgent();
+    toast(`${blacklistLabel(r.entry)} is off the blacklist`);
+  } catch (e) {
+    toast(`Could not restore it: ${e.message}`, "alert");
+  }
 }
 
 // The Activity agent switch lives in the Today's notes header, where its entries appear.
@@ -492,6 +530,14 @@ $("entries").addEventListener("click", (e) => {
 });
 // In the section header: it must not toggle the section.
 $("agentToggle").addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); setAgent(e.currentTarget.getAttribute("aria-checked") !== "true"); });
+// The agent's take: cross a point off, open the blacklist, put an entry back.
+$("agent").addEventListener("click", (e) => {
+  const btn = e.target.closest("button");
+  if (!btn) return;
+  if (btn.id === "blacklistBtn") { showBlacklist = !showBlacklist; renderAgent(); }
+  else if (btn.dataset.dismiss !== undefined) { btn.disabled = true; dismissNudge(btn.dataset.dismiss); }
+  else if (btn.dataset.restore) { btn.disabled = true; restoreNudge(btn.dataset.restore); }
+});
 
 // Item note boxes: track unsaved edits ("" is kept: it deletes that note on Save).
 document.addEventListener("input", (e) => {

@@ -56,6 +56,8 @@ lib/details.js     what was done behind the activity: one aliased GraphQL query 
 lib/auto.js        automatic notes: stateSummary (open work + score as text), summaryPrompt,
                    parseAnswer ({points, nudges}), buildAuto (Claude or plain lines), plan() (pure
                    timing rules), createAutoNotes() (update(date), minute tick, status)
+lib/blacklist.js   the agent's blacklist (what the user crossed off the take): refsIn, matches,
+                   filterNudges, createBlacklist() over ~/.daily-dashboard/blacklist.json
 lib/config.js      ~/.daily-dashboard/config.json with DEFAULTS; env overrides
 lib/fsutil.js      writeFileAtomic (temp + rename), readJson
 public/            index.html + main.js (dashboard), history.html + history.js (/history),
@@ -85,7 +87,7 @@ test/              node:test suites
 | `GET /api/ping` | must return `{"app":"daily-dashboard"}` — single-instance detection and `dd.js` rely on it |
 | `GET /api/data` | read-only: `github{login,mine[],toReview[],closed[],reviewed[]}`, `githubError`, `githubFetchedAt`, `jira[]` (open), `jiraDone[]`, `jiraStatus{running,error,fetchedAt,source}`, `score{since,weeks[{start,end,jiraDone,prsMerged,prsReviewed,total}],totals}` (current week first), `progressDir`, `today`, `todayNotes`, `todayEntries`, `previous{date,notes,entries}` |
 | `POST /api/refresh` | starts a Jira refresh (runs Claude), refetches GitHub, returns the same payload as `/api/data`. POST because it costs money |
-| `GET /api/status` | `{ jiraStatus }` |
+| `GET /api/status` | `{ jiraStatus, autoStatus }` — cheap (no GitHub refresh); `dd.js` reads the agent's switch and blacklist from here |
 | `GET /api/history?days=N` | `{ progressDir, days: [{ date, savedAt, notes, entries, counts{jira,myPRs,toReview,done} }] }` (N ≤ 366) |
 | `GET /api/day?date=YYYY-MM-DD` | one day in full: `{ date, savedAt, notes, entries, jira, github{login,mine,toReview}, done{jira,prs,reviewed} }` (`done` = finished *that day*); 404 if none, 400 on a bad date |
 | `POST /api/save` `{notes}` | item notes; **merges**: sent keys replace, `""` deletes, unsent keys kept. Returns `{ date, files, notes, entries }` |
@@ -93,12 +95,15 @@ test/              node:test suites
 | `POST /api/entries/delete` `{id}` | removes a log entry (400 if not found) |
 | `POST /api/auto` `{date?}` | rebuilds the automatic points for today (or `date`): GitHub events + Jira changes → Claude summary. Returns `{ date, auto, autoStatus }`; `auto` is null when nothing was recorded. 404 when the feature is off |
 | `POST /api/agent` `{enabled}` | the Activity agent switch: starts/stops the scheduler at runtime and writes `auto.enabled` to the config file (`saveSetting`). Returns `{ autoStatus }`; 400 unless a boolean, 404 when the feature is off |
+| `POST /api/blacklist/add` `{text}` | crosses a nudge off the agent's take: the items it names (Jira keys, `repo#n`) or, naming none, its wording go on the blacklist, and today's `auto.nudges` loses everything the blacklist now covers. Returns `{ entry{id,refs,text,date,points[{index,text}],at}, added, auto, autoStatus }` (`added` false = an entry already covered it; `points` = what it took out of today's take, the clicked nudge and any sibling naming the same item); 400 unless a non-empty string ≤ 300 chars, 404 when the agent is off or no blacklist is wired |
+| `POST /api/blacklist/remove` `{id}` or `{text}` | takes entries off the blacklist: the one with `id`, or every one covering `text` (an item such as `dbms#11` in any spelling, or a wording — matched by the app). The points an entry took out of today's take go back to their places (newest cross-off first, so stacked undos line up). Returns `{ entry, removed, auto, autoStatus }`; 400 when nothing matched or neither field is a string |
 | `POST /api/launch` `{dir?}` | opens a new terminal running Claude in `dir` (absolute, must exist) or in `claude.defaultDir`; returns `{ ok, dir, defaultDir, command, recent[] }`. 400 for a bad folder, 404 when no launcher is injected. `/api/data` carries the same `claude{defaultDir,command,recent}` |
 | `POST /api/quit` | stops the app ~200 ms after replying |
 
 `/api/data` also returns `todayEntries`, `todayAuto`,
-`autoStatus{enabled,running,intervalMinutes,workHours,saveAt,catchupDays,useClaude,lastRun,error}`
-and `previous.{entries,auto}`; `/api/day` and `/api/history` days carry `auto` too.
+`autoStatus{enabled,running,intervalMinutes,workHours,saveAt,catchupDays,useClaude,nudges,lastRun,error,blacklist[]}`
+(`blacklist` = the entries above, oldest first) and `previous.{entries,auto}`; `/api/day` and
+`/api/history` days carry `auto` too.
 
 A day has three kinds of notes: **entries** (the "Today's notes" log, appended, each with an id and
 time), **notes** (one per item) and **auto** (`{ updatedAt, source: "claude"|"activity", points[],
@@ -140,7 +145,17 @@ Changing a field, key format or endpoint means updating `dd.js` and `SKILL.md` i
   commits per pushed branch — all clipped) and, for today, `stateSummary` (open Jira with days
   and PRs, own PRs with what they wait on, oldest reviews waiting, this week vs last); it asks
   for `{"points": [...], "nudges": [...]}` (`parseAnswer`; a bare array is accepted). Cap $0.15.
-  On failure the plain lines are shown and `nudges` is empty. The scheduler only ever *writes the
+  On failure the plain lines are shown and `nudges` is empty. The **blacklist** is enforced in
+  two layers: the prompt names the crossed-off items (`avoid`, text from the user's own file) and
+  `filterNudges` drops whatever still names them — in `buildAuto` and again right before the
+  write, so a cross-off during a build cannot come back. Nudges and entries are rendered through
+  `esc()`; the text accepted by `/api/blacklist/add` is a string of ≤ 300 chars, nothing else.
+  `dismiss`/`restore` write today's `auto.nudges` immediately (not through the rebuild queue, so
+  a click never waits 30 s on Claude); a rebuild that finishes afterwards replaces the take
+  wholesale, as any rebuild does — the blacklist file is the state that lasts. The reference
+  regex lives in `blacklist.js` (`REF_RE`) and `main.js` (`linkRefs`) in the same shape: change
+  both. Any upper-case `TOKEN-123` counts as a key (SHA-256 included); the entry is visible on the
+  page and can be put back. `createBlacklist` caches the file and re-reads it on an mtime change. The scheduler only ever *writes the
   day's `auto` field*; it never touches `entries`/`notes`. A quiet day writes no file; a day with
   no activity is retried only after the interval (`state.tried[date]`), so GitHub is not polled
   every minute. When GitHub fails (or the ~300-event feed no longer reaches the day) an existing

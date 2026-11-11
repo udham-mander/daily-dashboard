@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { buildAuto, createAutoNotes, freshMemory, parseAnswer, parsePoints, plan, stateSummary, summaryPrompt } from "../lib/auto.js";
+import { createBlacklist } from "../lib/blacklist.js";
 import { loadProgress, readDayFull } from "../lib/progress.js";
 
 const cfg = { enabled: true, intervalMinutes: 120, workHours: "07:00-20:00", saveAt: "17:00", catchupDays: 1, useClaude: true, nudges: true, model: "haiku" };
@@ -92,6 +93,15 @@ test("buildAuto: Claude bullets when they come back, raw activity lines when Cla
   assert.equal(called, 0); assert.equal(off.source, "activity");
   const nothing = await buildAuto("2026-11-11", { activity: { items: [], errors: [] }, useClaude: true, model: "haiku", claude: async () => { called++; return "[]"; } });
   assert.equal(called, 0, "no Claude call for an empty day"); assert.deepEqual(nothing.points, []);
+
+  // With a blacklist: the prompt names what was crossed off, and nudges about it are dropped anyway.
+  const blacklist = { hints: () => ["dbms#11", '"Your week trails last week"'], filter: (n) => n.filter((x) => !/dbms#11/i.test(x)), list: () => [] };
+  const crossed = await buildAuto("2026-11-11", { activity, state: "Open Jira issues:", useClaude: true, model: "haiku", blacklist,
+    claude: async (prompt) => { seen = prompt; return '{"points": ["Fixed main"], "nudges": ["Review DBMS#11 — 44 days", "web#3 waits for you"]}'; } });
+  assert.match(seen, /crossed these off as not important[^\n]*dbms#11; "Your week trails last week"/);
+  assert.deepEqual(crossed.nudges, ["web#3 waits for you"]);
+  await buildAuto("2026-11-11", { activity, useClaude: true, model: "haiku", blacklist, claude: async (prompt) => { seen = prompt; return "[]"; } });
+  assert.doesNotMatch(seen, /crossed these off/, "no take asked for (past day): no blacklist in the prompt");
 });
 
 test("plan: previous-day catch-up once a day, end-of-day save once in its window, periodic builds in work hours", () => {
@@ -214,6 +224,61 @@ test("createAutoNotes.update writes the day's auto record beside the user's note
   assert.equal(kept.kept, true);
   assert.deepEqual(readDayFull(dir, day).auto.points, ["x"], "previous points survive");
   assert.match(flaky.status().error, /gh: 502/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("dismiss/restore: a crossed-off nudge leaves today's take and is blacklisted; restoring puts it back", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dd-dismiss-"));
+  const day = "2026-11-11";
+  const jira = { state: { issues: [], done: [], fetchedAt: new Date().toISOString() }, refresh: async () => {} };
+  const data = () => ({ github: { login: "me", mine: [], toReview: [], closed: [], reviewed: [] }, jiraDone: [], since: "2026-01-01" });
+  const blacklist = createBlacklist(path.join(dir, "blacklist.json"));
+  const take = ["Review dbms#11 — 43 days", "MAYA-26 in progress 86 days, no PR", "Your week trails last week"];
+  const auto = createAutoNotes({ cfg, progressDir: dir, jira, data, blacklist, refreshGithub: async () => {}, fetchEvents: async () => [],
+    claude: async () => JSON.stringify({ points: [], nudges: take }), now: () => local(day, "10:00") });
+  assert.deepEqual((await auto.update(day)).auto.nudges, take);
+  assert.deepEqual(auto.status().blacklist, []);
+
+  const d = auto.dismiss("MAYA-26 in progress 86 days, no PR");
+  assert.deepEqual([d.entry.refs, d.entry.date, d.entry.points, d.added], [["MAYA-26"], day, [{ index: 1, text: take[1] }], true]);
+  assert.deepEqual(d.auto.nudges, [take[0], take[2]], "gone from today's record");
+  assert.deepEqual(readDayFull(dir, day).auto.nudges, [take[0], take[2]]);
+  assert.deepEqual(auto.status().blacklist.map((e) => e.refs), [["MAYA-26"]]);
+  assert.deepEqual(auto.dismiss("MAYA-26 again").added, false, "already covered");
+  // A later build: Claude is told, and anything about MAYA-26 is filtered out anyway.
+  const again = await auto.update(day);
+  assert.deepEqual(again.auto.nudges, [take[0], take[2]]);
+  // Restoring (undo) puts the point back where it was.
+  assert.equal(auto.restore({ id: "unknown" }), null);
+  assert.equal(auto.restore({ text: "nothing like this" }), null);
+  const r = auto.restore({ id: d.entry.id });
+  assert.deepEqual([r.entry.id, r.removed.length], [d.entry.id, 1]);
+  assert.deepEqual(r.auto.nudges, take);
+  assert.deepEqual(readDayFull(dir, day).auto.nudges, take);
+  assert.deepEqual(auto.status().blacklist, []);
+  // Restoring an entry from another day does not touch today's take; a text the page no longer shows is still blacklisted.
+  const old = blacklist.add("web#3 is stale", { date: "2026-11-01", points: [{ index: 0, text: "web#3 is stale" }] }).entry;
+  assert.deepEqual(auto.restore({ id: old.id }).auto.nudges, take);
+  const stale = auto.dismiss("dbms#11 — a wording the record never had");
+  assert.deepEqual(stale.auto.nudges, [take[1], take[2]], "the item it names is crossed off all the same");
+  assert.deepEqual(stale.entry.points, [{ index: 0, text: take[0] }], "it remembers what it took out, not its own text");
+  assert.deepEqual(auto.restore({ text: "acme/DBMS#11" }).auto.nudges, take, "by item, in any spelling: what the entry took out comes back; its own text is never inserted");
+  assert.deepEqual(auto.status().blacklist, []);
+  // Stacked cross-offs: an entry takes its siblings too (same item); undoing by text brings every point back, in order.
+  auto.dismiss(take[0]); auto.dismiss("dbms#11 and MAYA-26 are both old");
+  assert.deepEqual(readDayFull(dir, day).auto.nudges, [take[2]]);
+  assert.deepEqual(auto.status().blacklist.map((e) => e.points.map((p) => p.index)), [[0], [0]], "indices as the take stood at each cross-off");
+  const both = auto.restore({ text: "dbms#11" });
+  assert.equal(both.removed.length, 2);
+  assert.deepEqual(both.auto.nudges, take);
+  // Undo of one cross-off that took two points (both naming dbms#11) brings both back.
+  await auto.update(day);
+  const twin = createAutoNotes({ cfg, progressDir: dir, jira, data, blacklist, refreshGithub: async () => {}, fetchEvents: async () => [],
+    claude: async () => JSON.stringify({ points: [], nudges: ["Review dbms#11 — 43 days", "dbms#11 has failing CI", "web#3 waits"] }), now: () => local(day, "11:00") });
+  await twin.update(day);
+  const t = twin.dismiss("dbms#11 has failing CI");
+  assert.deepEqual([t.auto.nudges, t.entry.points.map((p) => p.index)], [["web#3 waits"], [0, 1]]);
+  assert.deepEqual(twin.restore({ id: t.entry.id }).auto.nudges, ["Review dbms#11 — 43 days", "dbms#11 has failing CI", "web#3 waits"]);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 

@@ -2,20 +2,26 @@
 
 Your workday on one local page: open **Jira** issues and how long they've been in progress,
 your **pull requests** and what each is still waiting on, the **PRs waiting for your review**,
-and a place to keep **daily notes** — saved as Markdown in a folder you choose.
+your **score** week by week, and **daily notes** — yours, and the ones an **Activity agent**
+writes from what you actually did, with its take on what deserves attention today. Everything
+is saved as Markdown in a folder you choose.
 
 ```
-┌ Daily Dashboard ─────────────────────────── Auto ▾  ↻ Refresh  [Save today]  ⏻ Quit ┐
-│ ┌ JIRA IN PROGRESS ┐ ┌ MY PULL REQUESTS ┐ ┌ NEEDS MY REVIEW ┐ ┌ TODAY'S NOTES ┐       │
-│ │ 5                │ │ 1                │ │ 24              │ │ 0             │       │
-│ │ 5 for 14+ days   │ │ draft in progress│ │ oldest 43 days  │ │ no summary yet│       │
-│ └──────────────────┘ └──────────────────┘ └─────────────────┘ └───────────────┘       │
-│ ▸ Today's summary                                                          empty       │
-│ ▸ My Jira (9)                                   5 in progress · 5 for 14+ days         │
-│ ▸ My pull requests (1)                                                    1 draft      │
-│ ▸ Needs my review (24)                                         oldest open 43 days     │
-│ ▸ Done & score (37)                this week: 0 Jira · 1 merged · 1 reviewed           │
-└────────────────────────────────────────────────────────────────────────────────────────┘
+┌ Daily activity dashboard ───── History  Auto ▾  [Launch Claude ▾]  ↻ Refresh  [Save notes]  ⏻ Quit ┐
+│ ┌ JIRA IN PROGRESS ┐ ┌ MY PULL REQUESTS ┐ ┌ NEEDS MY REVIEW ┐ ┌ TODAY'S NOTES ┐ ┌ THIS WEEK ┐      │
+│ │ 5                │ │ 1                │ │ 24              │ │ 6             │ │ 3         │      │
+│ │ 5 for 14+ days   │ │ draft in progress│ │ oldest 43 days  │ │ 4 by the agent│ │ 1 · 1 · 1 │      │
+│ └──────────────────┘ └──────────────────┘ └─────────────────┘ └───────────────┘ └───────────┘      │
+│ ┃ AGENT'S TAKE · 10:12                                                         2 blacklisted       │
+│ ┃ 1. dbms#11 has waited 43 days for your review — oldest in your queue                        ×    │
+│ ┃ 2. MAYA-26 in progress 86 days with no PR — split it or move it on                          ×    │
+│ ┃ 3. Your week trails last week (1 vs 4 done) — one review would close the gap                ×    │
+│ ▸ Today's notes (6)        last at 09:40 · 4 by the agent      Activity agent · On   [+ Add]       │
+│ ▸ My Jira (9)                                    5 in progress · 5 for 14+ days                    │
+│ ▸ My pull requests (1)                                                    1 draft                  │
+│ ▸ Needs my review (24)                                        oldest open 43 days                  │
+│ ▸ Done & score (37)                   this week: 1 Jira · 1 merged · 1 reviewed                    │
+└────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ## Features
@@ -33,24 +39,26 @@ and a place to keep **daily notes** — saved as Markdown in a folder you choose
   did, decided or got blocked on, and confirm with **Add** or <kbd>Ctrl</kbd>+<kbd>Enter</kbd>; each
   entry is saved instantly with its time and can be deleted. The section also lists today's notes
   on individual items
-- **Automatic points** — every 2 hours (within work hours) the app turns what you actually did
-  into a few bullets that say *what* was done, not just that something happened: it reads the
-  PR descriptions, your commits of the day, the review comments and comments you wrote, and (via
-  Claude's Atlassian connector) the Jira issues you touched, then asks Claude to write the log
-  (or lists the plain activity with `auto.useClaude: false`). They appear in the same list as your
-  notes, marked with a small robot icon instead of a time, and are never edited by you or mixed
-  into your own entries (`dd.js auto` rebuilds them on demand)
 - **Activity agent** — the automatic side of the app, with an **On/Off switch** in the Today's
-  notes header (on by default, remembered in the config). While on, it writes the automatic
-  points, saves the day at 17:00, tops up yesterday, and gives its **take** in a card under the
-  tiles: it looks at everything that is open (reviews others wait on, your blocked PRs, Jira in
-  progress for weeks, how the week compares) and lists up to five things it thinks deserve your
-  attention today, most important first, with the keys and PRs linked. Shown as the app's
-  judgement (`auto.nudges: false` keeps the points but drops the take)
-- **Saves itself at 5 pm** — at `auto.saveAt` the app refreshes GitHub and Jira and writes the day's
-  file with fresh data, whether or not you pressed anything. When you start it the next morning
-  (or it runs past midnight) it tops up **yesterday's** automatic points with whatever came after
-  that save, so late work is not lost
+  notes header (on by default, remembered in the config). While on, every 2 hours within work
+  hours it adds **automatic points** to the same list, marked with a small robot icon instead of
+  a time: bullets that say *what* was done, not just that something happened. It reads the PR
+  descriptions, your commits of the day, the review comments and comments you wrote, and (via
+  Claude's Atlassian connector) the Jira issues you touched, then asks Claude to write the log
+  (`auto.useClaude: false` lists the plain activity instead). The points are never mixed into
+  your own entries; `dd.js auto` rebuilds them on demand
+- **Agent's take** — a card under the tiles where the agent gives its judgement: it looks at
+  everything that is open (reviews others wait on, your blocked PRs, Jira in progress for weeks,
+  how the week compares) and lists up to five things it thinks deserve your attention today,
+  most important first, with the keys and PRs linked. Each point has a **×**: cross off what is
+  not important and the item it names (or, if it names none, its wording) goes on a **blacklist**
+  the agent respects from then on — it is told what you crossed off and anything about it is
+  filtered out anyway. The card shows how many are blacklisted; click that to see them and put
+  any back (`auto.nudges: false` keeps the points but drops the take)
+- **Saves itself at 5 pm** — at `auto.saveAt` the agent refreshes GitHub and Jira and writes the
+  day's file with fresh data, whether or not you pressed anything. When you start it the next
+  morning (or it runs past midnight) it tops up **yesterday's** automatic points with whatever
+  came after that save, so late work is not lost
 - **Notes on items** — a note box on every Jira issue and PR; **Save notes** stores them. The next
   day each box shows what you wrote last time
 - **History page** (`/history`, or <kbd>H</kbd>) — every saved day with its notes, item notes and
@@ -90,8 +98,8 @@ and start the app again (until then the page shows a reminder and GitHub data on
 | Run in a terminal | `npm start` (or `node app.js --no-open`); logs stay in the terminal |
 | Refresh | **↻ Refresh** or <kbd>R</kbd>. GitHub is instant; Jira takes ~20 s and fills in when ready |
 | Log a note | **Add** in the Today's notes header (or <kbd>N</kbd>), type, then **Add** / <kbd>Ctrl</kbd>+<kbd>Enter</kbd> — saved immediately; <kbd>Esc</kbd> closes the box |
-| Automatic points | Appear in the same list on their own every 2 h, marked with a robot icon; rebuild with `dd.js auto` if needed |
-| Activity agent on/off | The **Activity agent** switch in the Today's notes header (or `dd.js agent on\|off`); off = nothing is written or saved on its own |
+| Activity agent | The **Activity agent** switch in the Today's notes header (or `dd.js agent on\|off`). On: automatic points appear in the same list every 2 h (robot icon; `dd.js auto` rebuilds them), the take is shown, the day is saved at 17:00. Off: nothing is written or saved on its own |
+| Agent's take | **×** on a point crosses it off and blacklists what it names; **n blacklisted** in the card opens the list and puts one back (or `dd.js blacklist`) |
 | Save notes on items | **Save notes** or <kbd>Ctrl</kbd>+<kbd>S</kbd>. Unsaved item notes are kept in the browser until you save |
 | Start a Claude session | **Launch Claude** or <kbd>L</kbd> opens a new terminal running `claude` in your default folder; the **▾** caret lists recent folders and takes any other path |
 | See previous days | **History** in the header or <kbd>H</kbd>; <kbd>Esc</kbd> goes back |
@@ -122,6 +130,7 @@ With the `udham-swe` plugin installed, just ask Claude Code:
 - "Which reviews have waited longest? Review the oldest one."
 - "Add a note on PROJ-123: blocked on the schema change" · "Log that I finished the api review"
 - "Open a new Claude session in the api repo" · "Rebuild today's automatic points"
+- "Stop reminding me about dbms#11" (goes on the agent's blacklist) · "What did I blacklist?"
 
 The skill starts the app if needed (without opening a browser), reads it, and saves notes that
 appear on the page. It asks before anything others would see (PR approvals or comments, marking
@@ -156,9 +165,9 @@ ready, Jira comments or transitions).
 | `auto.nudges` | `true` | The agent's take (needs `useClaude`) |
 | `auto.model` | `haiku` | Model for the summary |
 
-### Automatic points
+### Activity agent
 
-The app reads your own GitHub event feed (`gh api users/<you>/events`: pushes, PRs opened,
+The agent reads your own GitHub event feed (`gh api users/<you>/events`: pushes, PRs opened,
 merged or closed, reviews, comments) and the Jira issues that moved or were finished that day.
 For each PR and branch involved it then fetches the details of *your* work that day (PR
 description, your commits, your review comments and comments, clipped) and asks Claude for 3–8
@@ -167,6 +176,11 @@ $0.01–0.03 with Haiku, capped at $0.15). The only tool that call may use is re
 issues named in the activity through the Atlassian connector; every built-in tool is denied. If
 Claude is unavailable the plain activity lines are shown instead, with a note. Nothing is
 written on a day with no activity, and your own notes are never edited.
+
+What you cross off the take is kept in `~/.daily-dashboard/blacklist.json` (the items a point
+named — Jira keys, `repo#n` — or its wording when it named none). Later takes leave those out:
+the prompt lists them, and the app filters whatever still comes back. Put one back from the card,
+with `dd.js blacklist remove <id or item>`, or by deleting its line in that file.
 
 **Launch Claude** opens a new Windows Terminal tab (or a console window) running PowerShell with
 that command, in the chosen folder; on macOS it uses Terminal.app, on Linux the first terminal

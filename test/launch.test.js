@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { createLauncher, spawnDetached, terminalCommand } from "../lib/launch.js";
+import { cleanEnv, createLauncher, spawnDetached, terminalCommand } from "../lib/launch.js";
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "dd-launch-"));
 
@@ -56,6 +56,23 @@ test("launcher validates the folder, runs the terminal and keeps 5 recent folder
   await assert.rejects(() => failing.launch(), /could not start/);
   assert.deepEqual(failing.info().recent, [], "a failed launch is not remembered");
   fs.rmSync(base, { recursive: true, force: true });
+});
+
+test("a launched process does not inherit Claude Code's session markers (but keeps user settings)", async () => {
+  const env = { PATH: "p", CLAUDECODE: "1", CLAUDE_CODE_CHILD_SESSION: "1", CLAUDE_CODE_SESSION_ID: "x", claude_code_entrypoint: "cli",
+    CLAUDE_CODE_GIT_BASH_PATH: "C:/git/bash.exe", CLAUDE_CODE_ENABLE_TELEMETRY: "1", UDHAM_FLASH_DISABLE: "1", HOME: "h" };
+  const c = cleanEnv(env);
+  assert.deepEqual(Object.keys(c).sort(), ["CLAUDE_CODE_ENABLE_TELEMETRY", "CLAUDE_CODE_GIT_BASH_PATH", "HOME", "PATH"]);
+  assert.equal(env.CLAUDECODE, "1", "the input is not mutated");
+  // For real: a child started by spawnDetached sees no marker even though this test process may carry them.
+  const out = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "dd-env-")), "env.json");
+  process.env.CLAUDE_CODE_CHILD_SESSION = "1";
+  await spawnDetached(process.execPath, ["-e", "require('fs').writeFileSync(process.argv[1], JSON.stringify(process.env))", out], os.tmpdir());
+  const seen = JSON.parse(fs.readFileSync(out, "utf8"));
+  assert.equal(seen.CLAUDE_CODE_CHILD_SESSION, undefined);
+  assert.equal(seen.CLAUDECODE, undefined);
+  assert.ok(seen.PATH || seen.Path, "the rest of the environment is passed on");
+  fs.rmSync(path.dirname(out), { recursive: true, force: true });
 });
 
 test("spawnDetached: exit 0 or still running = success; non-zero exit or missing program = failure", async () => {

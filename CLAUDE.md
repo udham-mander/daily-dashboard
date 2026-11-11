@@ -184,6 +184,12 @@ Changing a field, key format or endpoint means updating `dd.js` and `SKILL.md` i
   `statusCategoryChangedAt ?? resolved` themselves.
 - Folder settings (`progressDir`, `claude.defaultDir`) accept `~`; a relative path is resolved
   from the home folder; validation then requires an absolute path.
+- **Environment inheritance**: the app is often started from inside a Claude Code session (the
+  skill's `dd.js ensure`), whose per-session markers (`CLAUDECODE`, `CLAUDE_CODE_CHILD_SESSION`,
+  `CLAUDE_CODE_SESSION_ID`, …) would otherwise reach every terminal the app launches and make the
+  new `claude` think it is a child session ("Transcript saving is off"). `dd.js` strips them when
+  starting the app and `spawnDetached` strips them again (`cleanEnv`, `SESSION_MARKERS`);
+  user settings like `CLAUDE_CODE_GIT_BASH_PATH` are kept.
 - The launcher `~/.daily-dashboard/launch.vbs` hard-codes this repo's path and the node path;
   re-run `npm run install-shortcut` after moving the repo or changing Node.
 - Logs: `~/.daily-dashboard/app.log`. Jira cache: `~/.daily-dashboard/jira-cache.json`.

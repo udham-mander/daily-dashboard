@@ -41,6 +41,8 @@ test("summaryPrompt: activity and details as data, Jira reads only when allowed,
   assert.match(full, /DETAILS:\n### api#7/);
   assert.match(full, /CURRENT STATE:\nOpen Jira issues/);
   assert.match(full, /mcp__claude_ai_Atlassian__getJiraIssue with cloudId "acme.atlassian.net" for these keys only/);
+  assert.match(full, /comments the engineer wrote on 2026-11-11\. The issue's description and comments from other days are background/);
+  assert.match(p, /Only the ACTIVITY and the lines marked "Your …" in DETAILS are what the engineer did on 2026-11-11/, "background is never reported as the day's work");
   assert.match(full, /"nudges": from the CURRENT STATE/);
   assert.doesNotMatch(summaryPrompt("2026-11-11", { items, jiraKeys: ["A-1"], site: "" }), /getJiraIssue/, "no site, no tool");
 });

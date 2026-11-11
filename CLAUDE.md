@@ -51,7 +51,8 @@ lib/claude.js      runClaude(prompt, {model, maxBudgetUsd, allowedTools}): headl
 lib/activity.js    what the user did on a day: activityFromEvents (GitHub event feed, grouped),
                    activityFromJira (moved/finished/updated), collectActivity (pages the feed)
 lib/details.js     what was done behind the activity: one aliased GraphQL query for the PRs touched
-                   (description, own commits/review comments/comments that day) + commits per
+                   (own commits/review comments/comments that day; the PR description labelled
+                   "Background" unless it is the user's own PR opened that day) + commits per
                    pushed branch; clipped prompt text
 lib/auto.js        automatic notes: stateSummary (open work + score as text), summaryPrompt,
                    parseAnswer ({points, nudges}), buildAuto (Claude or plain lines), plan() (pure
@@ -141,8 +142,13 @@ Changing a field, key format or endpoint means updating `dd.js` and `SKILL.md` i
   in Claude Code 2.1 it hides the MCP tools too (the Jira fetch then answers with a tool call as
   text). `--allowedTools` alone would *not* remove tools either.
 - **Automatic notes**: the prompt carries the activity lines, the details behind them
-  (`collectDetails`: PR description, the user's own commits/review comments/comments that day,
-  commits per pushed branch — all clipped) and, for today, `stateSummary` (open Jira with days
+  (`collectDetails`: the user's own commits/review comments/comments that day, commits per pushed
+  branch, and the PR description marked **Background** with its author and date — all clipped)
+  and, for today, `stateSummary`. The prompt says only the activity and the "Your …" lines are
+  that day's work; background (PR descriptions by others, Jira descriptions and older comments)
+  only describes the item. Without that, a comment on someone's PR produced points claiming
+  *their* PR contents as the user's work, and a Jira transition produced points from the issue's
+  old comments. The stored `activity` of a day is the ground truth for what its points may claim (open Jira with days
   and PRs, own PRs with what they wait on, oldest reviews waiting, this week vs last); it asks
   for `{"points": [...], "nudges": [...]}` (`parseAnswer`; a bare array is accepted). Cap $0.15.
   On failure the plain lines are shown and `nudges` is empty. The **blacklist** is enforced in

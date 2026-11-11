@@ -10,6 +10,7 @@ test("prQuery batches pull requests with aliases", () => {
   assert.match(q, /pr0: repository\(owner: "o", name: "api"\) \{ pullRequest\(number: 7\)/);
   assert.match(q, /pr1: repository\(owner: "o", name: "web"\) \{ pullRequest\(number: 12\)/);
   assert.match(q, /bodyText/); assert.match(q, /messageHeadline/); assert.match(q, /reviews\(last: 30\)/);
+  assert.match(q, /author \{ login \} createdAt/, "who opened the PR and when: decides whether its description is the user's work that day");
 });
 
 test("describePr keeps only the user's own work on the day, clipped", () => {
@@ -29,8 +30,14 @@ test("describePr keeps only the user's own work on the day, clipped", () => {
   };
   const d = describePr("api#7", pr, { login: "me", date: DAY });
   assert.match(d, /^### api#7 — DSM-1: Do the thing  \(\+10 −2, 3 files\)\n/);
-  assert.match(d, /Description: Problem\nx+…\n/);
-  assert.ok(d.length < 1400, "clipped");
+  assert.match(d, /Background — the PR's description, written by its author; it says what the PR is about, not what was done today: Problem\nx+…\n/);
+  assert.ok(d.length < 1500, "clipped");
+  // Someone else's PR, or an older PR of mine: the description stays background, with author and date.
+  assert.match(describePr("api#7", { ...pr, author: { login: "ana" }, createdAt: at("08:00", "2026-11-03") }, { login: "me", date: DAY }),
+    /Background — the PR's description, written by ana on 2026-11-03; it says what the PR is about/);
+  assert.match(describePr("api#7", { ...pr, author: { login: "me" }, createdAt: at("08:00", "2026-11-09") }, { login: "me", date: DAY }), /Background — the PR's description, written by me on 2026-11-09/);
+  // My own PR opened that day: the description is that day's work.
+  assert.match(describePr("api#7", { ...pr, author: { login: "me" }, createdAt: at("08:00") }, { login: "me", date: DAY }), /Description \(your PR, opened today\): Problem\nx+…\n/);
   assert.match(d, /Your commits today: "DSM-1: mine today"\n/);
   assert.doesNotMatch(d, /someone else|mine yesterday|nit|thanks/);
   assert.match(d, /Your review today: commented, approved — 2 comment\(s\)\n  - DBManager.java: Fixed in 91e528f.\n  - Looks good.\n/);

@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { DEFAULTS, loadConfig, merge, validateConfig } from "../lib/config.js";
+import { DEFAULTS, loadConfig, merge, saveSetting, validateConfig } from "../lib/config.js";
 
 const tmpFile = (content) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dd-config-"));
@@ -68,6 +68,23 @@ test("validateConfig rejects values that could reach a command line or URL", () 
   assert.doesNotThrow(() => validateConfig(valid(), "cfg"));
   const noDone = valid(); noDone.jira.doneJql = "";
   assert.doesNotThrow(() => validateConfig(noDone, "cfg"), "an empty doneJql disables the done search");
+});
+
+test("saveSetting writes one nested key into the user's file and keeps the rest", () => {
+  const file = tmpFile(JSON.stringify({ port: 4400, jira: { site: "x.atlassian.net" } }));
+  saveSetting(["auto", "enabled"], false, file);
+  let user = JSON.parse(fs.readFileSync(file, "utf8"));
+  assert.deepEqual(user, { port: 4400, jira: { site: "x.atlassian.net" }, auto: { enabled: false } });
+  saveSetting(["auto", "enabled"], true, file);
+  saveSetting(["port"], 4500, file);
+  user = JSON.parse(fs.readFileSync(file, "utf8"));
+  assert.deepEqual(user, { port: 4500, jira: { site: "x.atlassian.net" }, auto: { enabled: true } });
+  assert.equal(loadConfig({ env: {}, file }).auto.enabled, true, "loadConfig reads it back");
+  assert.throws(() => saveSetting(["__proto__", "x"], 1, file), /bad setting path/);
+  assert.throws(() => saveSetting([], 1, file), /bad setting path/);
+  const fresh = tmpFile();
+  saveSetting(["auto", "enabled"], false, fresh);
+  assert.deepEqual(JSON.parse(fs.readFileSync(fresh, "utf8")), { auto: { enabled: false } }, "a missing file is created with just that key");
 });
 
 test("auto.useClaude follows jira.mode unless set explicitly", () => {

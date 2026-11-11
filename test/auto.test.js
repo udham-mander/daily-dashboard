@@ -3,10 +3,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { buildAuto, createAutoNotes, freshMemory, parsePoints, plan, summaryPrompt } from "../lib/auto.js";
+import { buildAuto, createAutoNotes, freshMemory, parseAnswer, parsePoints, plan, stateSummary, summaryPrompt } from "../lib/auto.js";
 import { loadProgress, readDayFull } from "../lib/progress.js";
 
-const cfg = { enabled: true, intervalMinutes: 120, workHours: "07:00-20:00", saveAt: "17:00", catchupDays: 1, useClaude: true, model: "haiku" };
+const cfg = { enabled: true, intervalMinutes: 120, workHours: "07:00-20:00", saveAt: "17:00", catchupDays: 1, useClaude: true, nudges: true, model: "haiku" };
 const local = (ymd, hm) => new Date(`${ymd}T${hm}`);
 const iso = (ymd, hm) => local(ymd, hm).toISOString();
 
@@ -19,18 +19,65 @@ test("parsePoints accepts only an array of strings and caps it", () => {
   assert.equal(parsePoints(JSON.stringify(["x".repeat(500)]))[0].length, 300);
 });
 
-test("summaryPrompt lists the activity as data, one line each", () => {
-  const p = summaryPrompt("2026-11-11", [{ text: "Pushed 2 commits\nto x" }, { text: "Finished A-1" }]);
+test("parseAnswer: {points, nudges} or a bare array; anything else is rejected", () => {
+  assert.deepEqual(parseAnswer('{"points": ["a"], "nudges": ["b", " c "]}'), { points: ["a"], nudges: ["b", "c"] });
+  assert.deepEqual(parseAnswer('{"points": ["a"]}'), { points: ["a"], nudges: [] });
+  assert.deepEqual(parseAnswer('["x"]'), { points: ["x"], nudges: [] });
+  assert.equal(parseAnswer(JSON.stringify({ points: [], nudges: Array.from({ length: 20 }, (_, i) => `n${i}`) })).nudges.length, 6);
+  assert.throws(() => parseAnswer('{"a":1}'), /array/);
+  assert.throws(() => parseAnswer('{"points": "none"}'), /array of strings/);
+});
+
+test("summaryPrompt: activity and details as data, Jira reads only when allowed, nudges only with a state", () => {
+  const items = [{ text: "Pushed 2 commits\nto x" }, { text: "Finished A-1" }];
+  const p = summaryPrompt("2026-11-11", { items });
   assert.match(p, /2026-11-11/);
-  assert.match(p, /\n- Pushed 2 commits to x\n- Finished A-1$/);
-  assert.match(p, /ONLY a JSON array/);
+  assert.match(p, /ACTIVITY:\n- Pushed 2 commits to x\n- Finished A-1/);
+  assert.match(p, /ONLY one JSON object/);
+  assert.match(p, /WHAT was done/);
+  assert.doesNotMatch(p, /getJiraIssue|CURRENT STATE|DETAILS:/);
+  const full = summaryPrompt("2026-11-11", { items, details: "### api#7 — CSV\nYour commits today: \"Add export\"", state: "Open Jira issues:\n- A-1 · In Progress · 20d · no PR", jiraKeys: ["A-1"], site: "acme.atlassian.net" });
+  assert.match(full, /DETAILS:\n### api#7/);
+  assert.match(full, /CURRENT STATE:\nOpen Jira issues/);
+  assert.match(full, /mcp__claude_ai_Atlassian__getJiraIssue with cloudId "acme.atlassian.net" for these keys only/);
+  assert.match(full, /"nudges": from the CURRENT STATE/);
+  assert.doesNotMatch(summaryPrompt("2026-11-11", { items, jiraKeys: ["A-1"], site: "" }), /getJiraIssue/, "no site, no tool");
+});
+
+test("stateSummary writes out open work, waiting reviews and the week's score as data", () => {
+  const now = local("2026-11-11", "10:00");
+  const s = stateSummary({
+    jiraOpen: [{ key: "AB-1", summary: "Slow thing", status: "In Progress", statusCategoryChangedAt: local("2026-10-20", "09:00").toISOString() }],
+    github: {
+      mine: [{ repo: "o/api", number: 9, title: "AB-1 export", branch: "ab-1", draft: true, createdAt: local("2026-11-06", "09:00").toISOString(), pending: [{ level: "info", text: "Draft" }] }],
+      toReview: [{ repo: "o/web", number: 3, title: "Fix", author: "ana", createdAt: local("2026-11-08", "09:00").toISOString() }],
+      closed: [], reviewed: [],
+    },
+    jiraDone: [], now, weeks: 2,
+  });
+  assert.match(s, /- AB-1 · In Progress · 22d · api#9 \(draft\) · "Slow thing"/);
+  assert.match(s, /- api#9 · 5d · Draft · "AB-1 export"/);
+  assert.match(s, /- web#3 · by ana · waiting 3d · "Fix"/);
+  assert.match(s, /Score — this week: 0 Jira done · 0 PRs merged · 0 reviewed; last week: 0 · 0 · 0/);
 });
 
 test("buildAuto: Claude bullets when they come back, raw activity lines when Claude fails or returns nothing", async () => {
-  const activity = { items: [{ text: "Pushed 1 commit to api:main: fix" }, { text: "Finished A-1 (Done): s" }], errors: ["GitHub activity: partial"] };
+  const activity = { items: [{ text: "Pushed 1 commit to api:main: fix" }, { text: "Finished A-1 (Done): s", kind: "jira", ref: "A-1" }], errors: ["GitHub activity: partial"] };
   const ok = await buildAuto("2026-11-11", { activity, useClaude: true, model: "haiku", claude: async () => '["Fixed main", "Closed A-1"]' });
-  assert.deepEqual([ok.source, ok.points, ok.errors], ["claude", ["Fixed main", "Closed A-1"], ["GitHub activity: partial"]]);
+  assert.deepEqual([ok.source, ok.points, ok.errors, ok.nudges], ["claude", ["Fixed main", "Closed A-1"], ["GitHub activity: partial"], []]);
   assert.equal(ok.activity.length, 2);
+
+  // With details, a state and Jira keys: the prompt carries them, the Jira read tool is allowed, nudges come back.
+  let seen;
+  const rich = await buildAuto("2026-11-11", { activity, details: "### api#7", state: "Open Jira issues:", jiraKeys: ["A-1"], site: "acme.atlassian.net", useClaude: true, model: "haiku",
+    claude: async (prompt, opts) => { seen = { prompt, opts }; return '{"points": ["Shipped the CSV export (api#7)"], "nudges": ["web#3 has waited 3 days for your review"]}'; } });
+  assert.deepEqual(rich.points, ["Shipped the CSV export (api#7)"]);
+  assert.deepEqual(rich.nudges, ["web#3 has waited 3 days for your review"]);
+  assert.deepEqual(seen.opts.allowedTools, ["mcp__claude_ai_Atlassian__getJiraIssue"]);
+  assert.match(seen.prompt, /DETAILS:\n### api#7/);
+  const noSite = await buildAuto("2026-11-11", { activity, jiraKeys: ["A-1"], site: "", useClaude: true, model: "haiku", claude: async (_p, opts) => { seen = opts; return "[]"; } });
+  assert.deepEqual(seen.allowedTools, [], "token mode / no site: no tools at all");
+  assert.equal(noSite.source, "activity");
 
   const failed = await buildAuto("2026-11-11", { activity, useClaude: true, model: "haiku", claude: async () => { throw new Error("timed out"); } });
   assert.equal(failed.source, "activity");
@@ -97,14 +144,21 @@ test("createAutoNotes.update writes the day's auto record beside the user's note
   let refreshed = 0, claudeCalls = 0;
   const jira = { state: { issues: [], done: [], fetchedAt: new Date().toISOString() }, refresh: async () => {} };
   const data = (login = "me") => () => ({ github: { login, mine: [], toReview: [], closed: [], reviewed: [] }, jiraDone: [], since: "2026-01-01" });
+  const detailCalls = [], prompts = [];
   const auto = createAutoNotes({
-    cfg, progressDir: dir, jira, data: data(),
+    cfg, progressDir: dir, jira, data: data(), site: "acme.atlassian.net",
     refreshGithub: async () => { refreshed++; },
     fetchEvents: async () => events,
-    claude: async () => { claudeCalls++; return '["Fixed main"]'; },
+    details: async (date, items, { login }) => { detailCalls.push({ date, n: items.length, login }); return { text: "### api:main\nYour commits today: \"fix\"", errors: [] }; },
+    claude: async (prompt) => { claudeCalls++; prompts.push(prompt); return '{"points": ["Fixed main"], "nudges": ["nothing urgent"]}'; },
+    now: () => local(day, "10:00"),
   });
   const r = await auto.update(day, { reason: "test" });
   assert.deepEqual(r.auto.points, ["Fixed main"]);
+  assert.deepEqual(r.auto.nudges, ["nothing urgent"], "today gets the agent's take");
+  assert.deepEqual(detailCalls, [{ date: day, n: 1, login: "me" }], "details fetched for the day's items");
+  assert.match(prompts[0], /DETAILS:\n### api:main/);
+  assert.match(prompts[0], /CURRENT STATE:/);
   const stored = readDayFull(dir, day);
   assert.equal(stored.auto.source, "claude");
   assert.deepEqual(stored.auto.activity.map((a) => a.text), ["Pushed 1 commit to api:main: fix"]);
@@ -128,9 +182,17 @@ test("createAutoNotes.update writes the day's auto record beside the user's note
   assert.ok(readDayFull(dir, day).auto.catchupAt);
   assert.equal(readDayFull(dir, day).auto.eodSavedAt, eod);
 
-  // An empty day with no file: nothing is written (no weekend files).
+  // An empty past day with no file: nothing is written (no weekend files)…
   assert.equal(await auto.update("2026-11-08", { reason: "test" }), null);
   assert.equal(fs.existsSync(path.join(dir, "2026-11-08.json")), false);
+  // …but a quiet *today* still gets the agent's take (it is about what is open, not what happened).
+  const quiet = createAutoNotes({ cfg, progressDir: dir, jira, data: data(), fetchEvents: async () => [], refreshGithub: async () => {},
+    claude: async (p) => { assert.match(p, /CURRENT STATE/); assert.doesNotMatch(p, /DETAILS:/); return '{"points": [], "nudges": ["web#3 has waited 3 days"]}'; },
+    now: () => local("2026-11-15", "10:00") });
+  const q = await quiet.update("2026-11-15", { reason: "scheduled" });
+  assert.deepEqual([q.auto.points, q.auto.nudges], [[], ["web#3 has waited 3 days"]]);
+  assert.equal(await createAutoNotes({ cfg: { ...cfg, nudges: false }, progressDir: dir, jira, data: data(), fetchEvents: async () => [], refreshGithub: async () => {},
+    claude: async () => "[]", now: () => local("2026-11-16", "10:00") }).update("2026-11-16", { reason: "scheduled" }), null, "nudges off: a quiet today writes nothing");
   assert.equal(auto.status().running, false);
   assert.equal(auto.status().error, null);
 
@@ -161,7 +223,8 @@ test("tick(): one feed download per tick, quiet days not retried, end of day onc
   const events = [{ type: "PushEvent", created_at: iso("2026-11-12", "10:00"), repo: { name: "o/api" }, payload: { ref: "refs/heads/main", head: "a", before: "b" } }];
   const jira = { state: { issues: [], done: [], fetchedAt: new Date().toISOString() }, refresh: async () => {} };
   let fetches = 0, clock = local(D, "09:00"), failGithub = false;
-  const t = createAutoNotes({ cfg, progressDir: dir, jira, data: () => ({ github: { login: "me", mine: [], toReview: [], closed: [], reviewed: [] }, jiraDone: [], since: "2026-01-01" }),
+  // nudges off: this test is about quiet days, and the agent's take would give today a file.
+  const t = createAutoNotes({ cfg: { ...cfg, nudges: false }, progressDir: dir, jira, data: () => ({ github: { login: "me", mine: [], toReview: [], closed: [], reviewed: [] }, jiraDone: [], since: "2026-01-01" }),
     refreshGithub: async () => { if (failGithub) throw new Error("gh: offline"); }, fetchEvents: async () => { fetches++; return events; },
     claude: async () => '["pushed to main"]', now: () => clock });
 

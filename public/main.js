@@ -56,8 +56,8 @@ function renderToday() {
     ...entries.map((e) => ({ at: e.at, html: `<li class="entry"><time class="when" datetime="${esc(e.at)}">${esc(timeOf(e.at))}</time>
       <div class="text">${esc(e.text)}</div>
       <button class="icon-btn" data-del="${esc(e.id)}" title="Delete note" aria-label="Delete note">${icon("trash")}</button></li>` })),
-    ...autoPoints.map((p) => ({ at: auto.updatedAt, html: `<li class="entry is-auto" title="Automatic — from your GitHub and Jira activity (updated ${esc(timeOf(auto.updatedAt))})">
-      <span class="when">${icon("bot", "i auto-ico")}<span class="visually-hidden">Automatic</span></span><div class="text">${esc(p)}</div><span></span></li>` })),
+    ...autoPoints.map((p) => ({ at: auto.updatedAt, html: `<li class="entry is-auto" title="Activity agent — written from your GitHub and Jira activity (${esc(timeOf(auto.updatedAt))})">
+      <span class="when">${icon("bot", "i auto-ico")}<span class="visually-hidden">Activity agent</span></span><div class="text">${esc(p)}</div><span></span></li>` })),
   ].sort((a, b) => b.at.localeCompare(a.at));
   $("entries").innerHTML =
     (notes.summary ? `<li class="entry"><span class="when">Summary</span><div class="text">${esc(notes.summary)}</div>
@@ -86,9 +86,55 @@ function renderToday() {
   const total = entries.length + autoPoints.length + itemKeys.length + (notes.summary ? 1 : 0);
   $("count-today").textContent = total;
   const hints = (entries.length ? pill("good", `last at ${timeOf(entries.at(-1).at)}`, true) : "") +
-    (autoPoints.length ? pill("info", `${autoPoints.length} automatic`) : "");
+    (autoPoints.length ? pill("info", `${autoPoints.length} by the agent`) : "");
   $("hint-today").innerHTML = hints || pill("info", "none yet");
+  renderAgent();
   renderTiles();
+}
+
+// ---------- the Activity agent ----------
+// Its card: the on/off switch (remembered in the config), what it does, and its take — up to five
+// things it picked from the current state as worth attention today, with the keys and PR
+// references it names linked to the real items.
+function refLinks() {
+  const map = new Map();
+  for (const j of [...(DATA.jira ?? []), ...(DATA.jiraDone ?? [])]) map.set(j.key, j.url);
+  for (const list of ["mine", "toReview", "closed", "reviewed"]) for (const pr of DATA.github?.[list] ?? []) map.set(`${pr.repo.split("/")[1]}#${pr.number}`, pr.url);
+  return map;
+}
+function linkRefs(text, map) {
+  return esc(text).replace(/\b([A-Z][A-Z0-9]+-\d+|[A-Za-z0-9_.-]+#\d+)\b/g, (m) =>
+    map.has(m) ? `<a href="${esc(safeUrl(map.get(m)))}" target="_blank" rel="noopener">${m}</a>` : m);
+}
+function renderAgent() {
+  const st = DATA.autoStatus ?? { enabled: false };
+  const a = DATA.todayAuto;
+  const on = Boolean(st.enabled);
+  const nudges = on ? (a?.nudges ?? []) : [];
+  const every = st.intervalMinutes >= 60 ? `${+(st.intervalMinutes / 60).toFixed(1)} h` : `${st.intervalMinutes} min`;
+  const what = on
+    ? `writes your log from GitHub and Jira every ${every} (${st.workHours})${st.saveAt ? `, saves the day at ${st.saveAt}` : ""}${a?.updatedAt ? ` · last run ${timeOf(a.updatedAt)}` : ""}`
+    : "off — nothing is written or saved on its own; your own notes still work";
+  const map = refLinks();
+  $("agent").classList.toggle("off", !on);
+  $("agent").innerHTML = `<div class="head">${icon("bot")}<span>Activity agent</span>
+      <label class="switch" title="Turn the Activity agent on or off"><input type="checkbox" role="switch" id="agentToggle" ${on ? "checked" : ""}>
+        <span class="track" aria-hidden="true"></span><span class="state">${on ? "On" : "Off"}</span></label>
+      <span class="when">${esc(what)}</span></div>` +
+    (nudges.length ? `<ol>${nudges.map((n) => `<li>${linkRefs(n, map)}</li>`).join("")}</ol>`
+      : on && a ? '<p class="empty small">Nothing stands out right now.</p>' : "");
+  $("agent").hidden = false;
+}
+
+async function setAgent(enabled) {
+  try {
+    const r = await api("/api/agent", { enabled });
+    DATA.autoStatus = r.autoStatus;
+    toast(enabled ? "Activity agent on" : "Activity agent off");
+  } catch (e) {
+    toast(`Could not change the agent: ${e.message}`, "alert");
+  }
+  renderAgent();
 }
 
 // The text box is shown only on demand (Add button, the N key, or the tile) and closed again
@@ -437,6 +483,7 @@ $("entries").addEventListener("click", (e) => {
   if (btn?.dataset.del) deleteEntry(btn.dataset.del);
   else if (btn?.hasAttribute("data-del-summary")) deleteEntry("summary");
 });
+$("agent").addEventListener("change", (e) => { if (e.target.id === "agentToggle") setAgent(e.target.checked); });
 
 // Item note boxes: track unsaved edits ("" is kept: it deletes that note on Save).
 document.addEventListener("input", (e) => {

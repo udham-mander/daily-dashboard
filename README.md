@@ -33,11 +33,20 @@ and a place to keep **daily notes** — saved as Markdown in a folder you choose
   did, decided or got blocked on, and confirm with **Add** or <kbd>Ctrl</kbd>+<kbd>Enter</kbd>; each
   entry is saved instantly with its time and can be deleted. The section also lists today's notes
   on individual items
-- **Automatic points** — every 2 hours (within work hours) the app turns what you actually did —
-  pushes, PRs opened/merged, reviews, comments, Jira issues moved or finished — into a few bullets,
-  summarized by Claude (or listed plainly with `auto.useClaude: false`). They appear in the same
-  list, marked with a small robot icon instead of a time, and are never edited by you or mixed into
-  your own entries (`dd.js auto` rebuilds them on demand)
+- **Automatic points** — every 2 hours (within work hours) the app turns what you actually did
+  into a few bullets that say *what* was done, not just that something happened: it reads the
+  PR descriptions, your commits of the day, the review comments and comments you wrote, and (via
+  Claude's Atlassian connector) the Jira issues you touched, then asks Claude to write the log
+  (or lists the plain activity with `auto.useClaude: false`). They appear in the same list as your
+  notes, marked with a small robot icon instead of a time, and are never edited by you or mixed
+  into your own entries (`dd.js auto` rebuilds them on demand)
+- **Activity agent** — the automatic side of the app has its own card under the tiles with an
+  **On/Off switch** (on by default, remembered in the config). While on, it writes the automatic
+  points, saves the day at 17:00, tops up yesterday, and gives its **take**: it looks at everything
+  that is open (reviews others wait on, your blocked PRs, Jira in progress for weeks, how the week
+  compares) and lists up to five things it thinks deserve your attention today, most important
+  first, with the keys and PRs linked. Shown as the app's judgement (`auto.nudges: false` keeps
+  the points but drops the take)
 - **Saves itself at 5 pm** — at `auto.saveAt` the app refreshes GitHub and Jira and writes the day's
   file with fresh data, whether or not you pressed anything. When you start it the next morning
   (or it runs past midnight) it tops up **yesterday's** automatic points with whatever came after
@@ -82,6 +91,7 @@ and start the app again (until then the page shows a reminder and GitHub data on
 | Refresh | **↻ Refresh** or <kbd>R</kbd>. GitHub is instant; Jira takes ~20 s and fills in when ready |
 | Log a note | **Add** in the Today's notes header (or <kbd>N</kbd>), type, then **Add** / <kbd>Ctrl</kbd>+<kbd>Enter</kbd> — saved immediately; <kbd>Esc</kbd> closes the box |
 | Automatic points | Appear in the same list on their own every 2 h, marked with a robot icon; rebuild with `dd.js auto` if needed |
+| Activity agent on/off | The switch on the **Activity agent** card (or `dd.js agent on\|off`); off = nothing is written or saved on its own |
 | Save notes on items | **Save notes** or <kbd>Ctrl</kbd>+<kbd>S</kbd>. Unsaved item notes are kept in the browser until you save |
 | Start a Claude session | **Launch Claude** or <kbd>L</kbd> opens a new terminal running `claude` in your default folder; the **▾** caret lists recent folders and takes any other path |
 | See previous days | **History** in the header or <kbd>H</kbd>; <kbd>Esc</kbd> goes back |
@@ -143,15 +153,20 @@ ready, Jira comments or transitions).
 | `auto.saveAt` | `"17:00"` | End-of-day save with fresh data (`""` = off); runs once between that time and the end of `workHours`, even if the app was started late. Started after work hours? The next morning's top-up covers it |
 | `auto.catchupDays` | `1` | On start and after midnight, top up the previous N days' automatic points (once per day) |
 | `auto.useClaude` | `null` = same as the Jira source | Summarize with headless Claude (`false` = plain activity lines, no Claude call; token-mode installs default to `false`) |
+| `auto.nudges` | `true` | The agent's take (needs `useClaude`) |
 | `auto.model` | `haiku` | Model for the summary |
 
 ### Automatic points
 
 The app reads your own GitHub event feed (`gh api users/<you>/events`: pushes, PRs opened,
-merged or closed, reviews, comments) and the Jira issues that moved or were finished that day,
-then asks Claude for 3–8 past-tense bullets (`claude -p`, no tools, capped at $0.05; about
-$0.002 with Haiku). If Claude is unavailable the plain activity lines are shown instead, with a
-note. Nothing is written on a day with no activity, and your own notes are never edited.
+merged or closed, reviews, comments) and the Jira issues that moved or were finished that day.
+For each PR and branch involved it then fetches the details of *your* work that day (PR
+description, your commits, your review comments and comments, clipped) and asks Claude for 3–8
+past-tense bullets plus, for today, the agent's take on the current state (`claude -p`, about
+$0.01–0.03 with Haiku, capped at $0.15). The only tool that call may use is reading the Jira
+issues named in the activity through the Atlassian connector; every built-in tool is denied. If
+Claude is unavailable the plain activity lines are shown instead, with a note. Nothing is
+written on a day with no activity, and your own notes are never edited.
 
 **Launch Claude** opens a new Windows Terminal tab (or a console window) running PowerShell with
 that command, in the chosen folder; on macOS it uses Terminal.app, on Linux the first terminal

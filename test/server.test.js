@@ -8,8 +8,8 @@ import { createJiraSource } from "../lib/jira.js";
 import { createLauncher } from "../lib/launch.js";
 import { createServer } from "../lib/server.js";
 
-let server, port, dir, quit = false;
-const launched = [], autoCalls = [];
+let server, port, dir, quit = false, agentOn = true;
+const launched = [], autoCalls = [], saved = [];
 
 // Raw requests so tests can set Host/Origin freely (fetch won't let us forge Host).
 function request(method, pathname, { headers = {}, body } = {}) {
@@ -46,8 +46,10 @@ before(async () => {
     launcher: createLauncher({ defaultDir: dir, recentFile: path.join(dir, "recent.json"), run: async (_f, _a, cwd) => { launched.push(cwd); } }),
     auto: {   // a stand-in for createAutoNotes(): records calls, answers like the real one
       update: async (date, opts) => { autoCalls.push([date, opts]); return { auto: { updatedAt: new Date().toISOString(), source: "activity", points: ["did a thing"], errors: [] } }; },
-      status: () => ({ enabled: true, running: false, intervalMinutes: 120, workHours: "07:00-20:00", useClaude: true }),
+      status: () => ({ enabled: agentOn, running: false, intervalMinutes: 120, workHours: "07:00-20:00", useClaude: true }),
+      setEnabled(on) { agentOn = on; return this.status(); },
     },
+    saveSetting: (keys, value) => { saved.push([keys, value]); },
     onQuit: () => { quit = true; },
   });
   await new Promise((r) => server.listen(port, "127.0.0.1", r));
@@ -103,6 +105,19 @@ test("POST /api/auto rebuilds the automatic points (today or a given day); /api/
   const data = JSON.parse((await request("GET", "/api/data")).body);
   assert.equal(data.autoStatus.intervalMinutes, 120);
   assert.equal(data.todayAuto, null, "the stub did not write a file");
+});
+
+test("POST /api/agent switches the Activity agent and remembers it in the config", async () => {
+  const off = JSON.parse((await write("/api/agent", { enabled: false })).body);
+  assert.equal(off.autoStatus.enabled, false);
+  assert.deepEqual(saved.at(-1), [["auto", "enabled"], false]);
+  assert.equal(JSON.parse((await request("GET", "/api/data")).body).autoStatus.enabled, false);
+  const on = JSON.parse((await write("/api/agent", { enabled: true })).body);
+  assert.equal(on.autoStatus.enabled, true);
+  assert.equal((await write("/api/agent", { enabled: "yes" })).status, 400);
+  assert.equal((await write("/api/agent", {})).status, 400);
+  assert.equal((await request("GET", "/api/agent")).status, 404, "never a GET");
+  assert.equal((await request("POST", "/api/agent", { body: { enabled: false } })).status, 403, "needs x-dd + origin");
 });
 
 test("a saved day's 'done' is topped up from live data while the day is inside the score window", async () => {

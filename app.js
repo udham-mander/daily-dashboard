@@ -53,7 +53,7 @@ const launcher = createLauncher({
 // and the server exposes the scheduler on POST /api/auto.
 let server;
 const auto = createAutoNotes({
-  cfg: cfg.auto, progressDir: cfg.progressDir, jira, fetchEvents, log,
+  cfg: cfg.auto, progressDir: cfg.progressDir, jira, fetchEvents, log, site: cfg.jira.site, scoreWeeks: cfg.scoreWeeks,
   data: () => server.finished(),
   refreshGithub: (force) => server.refreshGithub(force),
 });

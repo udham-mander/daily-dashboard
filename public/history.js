@@ -29,13 +29,14 @@ function notesBlock(day) {
   const summary = day.notes?.summary;
   const rows = [
     ...entries.map((e) => ({ at: e.at, html: `<li class="entry"><time class="when" datetime="${esc(e.at)}">${esc(timeOf(e.at))}</time><div class="text">${esc(e.text)}</div></li>` })),
-    ...(auto?.points ?? []).map((p) => ({ at: auto.updatedAt, html: `<li class="entry is-auto" title="Automatic — from GitHub and Jira activity (updated ${esc(timeOf(auto.updatedAt))})">
-      <span class="when">${icon("bot", "i auto-ico")}<span class="visually-hidden">Automatic</span></span><div class="text">${esc(p)}</div></li>` })),
+    ...(auto?.points ?? []).map((p) => ({ at: auto.updatedAt, html: `<li class="entry is-auto" title="Activity agent — written from GitHub and Jira activity (${esc(timeOf(auto.updatedAt))})">
+      <span class="when">${icon("bot", "i auto-ico")}<span class="visually-hidden">Activity agent</span></span><div class="text">${esc(p)}</div></li>` })),
   ].sort((a, b) => b.at.localeCompare(a.at));
   if (!rows.length && !summary) return '<p class="empty">No notes logged this day.</p>';
   return `<ol class="entries">` +
     (summary ? `<li class="entry"><span class="when">Summary</span><div class="text">${esc(summary)}</div></li>` : "") +
-    rows.map((r) => r.html).join("") + `</ol>`;
+    rows.map((r) => r.html).join("") + `</ol>` +
+    (auto?.nudges?.length ? `<h3>Activity agent's take that day</h3><ol class="snapshot">${auto.nudges.map((n) => `<li>${esc(n)}</li>`).join("")}</ol>` : "");
 }
 
 function itemNotesBlock(day) {

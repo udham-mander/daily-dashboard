@@ -50,8 +50,12 @@ lib/launch.js      "Launch Claude": terminalCommand() per platform, createLaunch
 lib/claude.js      runClaude(prompt, {model, maxBudgetUsd, allowedTools}): headless `claude -p` (stdin prompt)
 lib/activity.js    what the user did on a day: activityFromEvents (GitHub event feed, grouped),
                    activityFromJira (moved/finished/updated), collectActivity (pages the feed)
-lib/auto.js        automatic notes: buildAuto (Claude summary or plain lines), plan() (pure timing
-                   rules), createAutoNotes() (update(date), minute tick, status)
+lib/details.js     what was done behind the activity: one aliased GraphQL query for the PRs touched
+                   (description, own commits/review comments/comments that day) + commits per
+                   pushed branch; clipped prompt text
+lib/auto.js        automatic notes: stateSummary (open work + score as text), summaryPrompt,
+                   parseAnswer ({points, nudges}), buildAuto (Claude or plain lines), plan() (pure
+                   timing rules), createAutoNotes() (update(date), minute tick, status)
 lib/config.js      ~/.daily-dashboard/config.json with DEFAULTS; env overrides
 lib/fsutil.js      writeFileAtomic (temp + rename), readJson
 public/            index.html + main.js (dashboard), history.html + history.js (/history),
@@ -88,6 +92,7 @@ test/              node:test suites
 | `POST /api/entries` `{text}` | appends `{ id, at, text }` to today's log. Returns `{ entry, date, files, notes, entries }` |
 | `POST /api/entries/delete` `{id}` | removes a log entry (400 if not found) |
 | `POST /api/auto` `{date?}` | rebuilds the automatic points for today (or `date`): GitHub events + Jira changes → Claude summary. Returns `{ date, auto, autoStatus }`; `auto` is null when nothing was recorded. 404 when the feature is off |
+| `POST /api/agent` `{enabled}` | the Activity agent switch: starts/stops the scheduler at runtime and writes `auto.enabled` to the config file (`saveSetting`). Returns `{ autoStatus }`; 400 unless a boolean, 404 when the feature is off |
 | `POST /api/launch` `{dir?}` | opens a new terminal running Claude in `dir` (absolute, must exist) or in `claude.defaultDir`; returns `{ ok, dir, defaultDir, command, recent[] }`. 400 for a bad folder, 404 when no launcher is injected. `/api/data` carries the same `claude{defaultDir,command,recent}` |
 | `POST /api/quit` | stops the app ~200 ms after replying |
 
@@ -97,8 +102,9 @@ and `previous.{entries,auto}`; `/api/day` and `/api/history` days carry `auto` t
 
 A day has three kinds of notes: **entries** (the "Today's notes" log, appended, each with an id and
 time), **notes** (one per item) and **auto** (`{ updatedAt, source: "claude"|"activity", points[],
-activity[], errors[], eodSavedAt, catchupAt }`, written only by the app — never merged into
-entries/notes; `eodSavedAt` = the end-of-day save ran, `catchupAt` = the next-day top-up ran). Note keys:
+nudges[], activity[], errors[], eodSavedAt, catchupAt }`, written only by the app — never merged
+into entries/notes; `nudges` = the agent's take, today only; `eodSavedAt` = the end-of-day save
+ran, `catchupAt` = the next-day top-up ran). `autoStatus` also carries `nudges` (on/off). Note keys:
 `summary` (legacy daily summary, still accepted), `jira:<KEY>`, `pr:<owner/repo>#<n>`, `review:<owner/repo>#<n>`.
 Changing a field, key format or endpoint means updating `dd.js` and `SKILL.md` in udham-swe too.
 
@@ -122,14 +128,19 @@ Changing a field, key format or endpoint means updating `dd.js` and `SKILL.md` i
   `http(s)` links (`safeUrl`). `claude -p` runs with `--max-budget-usd 0.10`.
 - **Headless Claude** (`lib/claude.js`) always denies every built-in tool
   (`--disallowedTools` with `BUILTIN_DENY`; the permission system enforces it even in `-p` mode)
-  and either allows exactly the MCP tools listed in `allowedTools` (Jira: the search tool) or,
-  with none, adds `--tools ""` + `--strict-mcp-config` (no tools, no MCP servers — the summary).
+  and either allows exactly the MCP tools listed in `allowedTools` (Jira fetch: the search tool;
+  the summary: `getJiraIssue`, only when the day touched Jira keys and `jira.site` is set) or,
+  with none, adds `--tools ""` + `--strict-mcp-config` (no tools, no MCP servers).
   The prompts carry text written by others (PR titles, commit messages, issue summaries) as data;
   the model must have nothing to act with. Do **not** pass `--tools ""` together with MCP tools:
   in Claude Code 2.1 it hides the MCP tools too (the Jira fetch then answers with a tool call as
   text). `--allowedTools` alone would *not* remove tools either.
-- **Automatic notes**: the summary call has a $0.05 cap; the answer must be a JSON array of
-  strings (`parsePoints`), else the plain lines are shown. The scheduler only ever *writes the
+- **Automatic notes**: the prompt carries the activity lines, the details behind them
+  (`collectDetails`: PR description, the user's own commits/review comments/comments that day,
+  commits per pushed branch — all clipped) and, for today, `stateSummary` (open Jira with days
+  and PRs, own PRs with what they wait on, oldest reviews waiting, this week vs last); it asks
+  for `{"points": [...], "nudges": [...]}` (`parseAnswer`; a bare array is accepted). Cap $0.15.
+  On failure the plain lines are shown and `nudges` is empty. The scheduler only ever *writes the
   day's `auto` field*; it never touches `entries`/`notes`. A quiet day writes no file; a day with
   no activity is retried only after the interval (`state.tried[date]`), so GitHub is not polled
   every minute. When GitHub fails (or the ~300-event feed no longer reaches the day) an existing

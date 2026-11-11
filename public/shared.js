@@ -16,6 +16,15 @@ export const longDate = (ymd, opts = { weekday: "long", month: "long", day: "num
   const [y, m, d] = ymd.split("-").map(Number);
   return new Date(y, m - 1, d).toLocaleDateString(undefined, opts);
 };
+/** "2026-11-10" → "10 Nov" */
+export const shortDate = (ymd) => longDate(ymd, { month: "short", day: "numeric" });
+/** ISO timestamp → local "10 Nov" */
+export const dayOf = (iso) => (iso ? new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "?");
+/** A GitHub review state as a pill: approved = good, changes requested = bad, else info. */
+export const reviewPill = (state) => {
+  const s = String(state ?? "").toLowerCase().replace("_", " ");
+  return pill(s === "approved" ? "good" : s === "changes requested" ? "bad" : "info", s || "reviewed", true);
+};
 
 export const store = {
   get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
@@ -28,6 +37,9 @@ export const store = {
 export const safeUrl = (u) => (/^https?:\/\/[^\s"'<>]+$/i.test(u ?? "") ? u : "#");
 export const pill = (level, text, dot = false) => `<span class="pill ${level}${dot ? " dot" : ""}">${esc(text)}</span>`;
 export const short = (repo) => repo.split("/")[1];
+/** The one way a PR is linked: "repo#123" → its page in a new tab. */
+export const prLink = (pr, cls = "key") =>
+  `<a${cls ? ` class="${cls}"` : ""} href="${esc(safeUrl(pr.url))}" target="_blank" rel="noopener">${esc(short(pr.repo))}#${esc(pr.number)}</a>`;
 
 const ICONS = {
   refresh: '<path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/>',
@@ -44,6 +56,7 @@ const ICONS = {
   history: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/>',
   back: '<path d="M19 12H5M11 18l-6-6 6-6"/>',
   search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
+  trophy: '<path d="M8 4h8v6a4 4 0 0 1-8 0z"/><path d="M8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4"/><path d="M12 14v3M8 20h8M10 17h4v3h-4z"/>',
 };
 export const icon = (name, cls = "i") =>
   `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`;

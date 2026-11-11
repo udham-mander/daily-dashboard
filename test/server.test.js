@@ -29,18 +29,51 @@ before(async () => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), "dd-server-"));
   // Find a free port first: the server's allowed Host/Origin depend on it.
   port = await new Promise((r) => { const s = http.createServer().listen(0, "127.0.0.1", () => { const p = s.address().port; s.close(() => r(p)); }); });
-  const cfg = { port, progressDir: path.join(dir, "progress"), githubCacheSeconds: 60 };
+  const cfg = { port, progressDir: path.join(dir, "progress"), githubCacheSeconds: 60, scoreWeeks: 4 };
   const jira = createJiraSource({ site: "s", mode: "claude" }, path.join(dir, "cache.json"),
-    async () => [{ key: "PROJ-1", summary: "S", url: "", type: "Story", priority: "Low", status: "Open", statusCategory: "To Do" }]);
+    async () => ({
+      open: [{ key: "PROJ-1", summary: "S", url: "", type: "Story", priority: "Low", status: "Open", statusCategory: "To Do" }],
+      done: [{ key: "PROJ-0", summary: "Finished", status: "Closed", statusCategory: "Done", statusCategoryChangedAt: new Date().toISOString() }],
+    }));
   await jira.refresh();
   server = createServer({
     cfg, jira, publicDir: path.join(import.meta.dirname, "..", "public"),
-    collectGithub: async () => ({ login: "me", mine: [], toReview: [] }),
+    collectGithub: async (opts) => { githubArgs = opts; return { login: "me", mine: [], toReview: [],
+      closed: [{ repo: "o/r", number: 1, title: "M", url: "https://github.com/o/r/pull/1", merged: true, closedAt: new Date().toISOString() }],
+      reviewed: [] }; },
     onQuit: () => { quit = true; },
   });
   await new Promise((r) => server.listen(port, "127.0.0.1", r));
 });
 after(() => { server.close(); fs.rmSync(dir, { recursive: true, force: true }); });
+let githubArgs;
+
+test("score: weekly table built from done Jira, closed PRs and reviews; GitHub asked since the oldest week", async () => {
+  const data = JSON.parse((await request("GET", "/api/data")).body);
+  assert.equal(data.jiraDone[0].key, "PROJ-0");
+  assert.equal(data.github.closed.length, 1);
+  assert.equal(data.score.weeks.length, 4);
+  assert.deepEqual([data.score.weeks[0].jiraDone, data.score.weeks[0].prsMerged, data.score.weeks[0].prsReviewed], [1, 1, 0]);
+  assert.equal(data.score.totals.total, 2);
+  assert.match(githubArgs.since, /^\d{4}-\d{2}-\d{2}$/);
+  assert.equal(githubArgs.since, data.score.since);
+});
+
+test("a saved day's 'done' is topped up from live data while the day is inside the score window", async () => {
+  await write("/api/entries", { text: "first note of the day" });
+  const today = JSON.parse((await request("GET", "/api/data")).body).today;
+  const day = JSON.parse((await request("GET", `/api/day?date=${today}`)).body);
+  assert.deepEqual(day.done.prs.map((p) => p.number), [1], "the PR merged today shows even though it was stored with the note");
+  assert.deepEqual(day.done.jira.map((j) => j.key), ["PROJ-0"]);
+  // Simulate an older snapshot that missed them: strip `done` from the file, read again.
+  const file = path.join(dir, "progress", `${today}.json`);
+  const stored = JSON.parse(fs.readFileSync(file, "utf8"));
+  fs.writeFileSync(file, JSON.stringify({ ...stored, done: { jira: [], prs: [], reviewed: [] } }));
+  const again = JSON.parse((await request("GET", `/api/day?date=${today}`)).body);
+  assert.deepEqual(again.done.prs.map((p) => p.number), [1], "live data fills the gap");
+  const h = JSON.parse((await request("GET", "/api/history?days=1")).body);
+  assert.equal(h.days[0].counts.done, 2, "history count is topped up too");
+});
 
 test("serves the page and assets with a strict CSP", async () => {
   const res = await request("GET", "/");

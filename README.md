@@ -14,6 +14,7 @@ and a place to keep **daily notes** — saved as Markdown in a folder you choose
 │ ▸ My Jira (9)                                   5 in progress · 5 for 14+ days         │
 │ ▸ My pull requests (1)                                                    1 draft      │
 │ ▸ Needs my review (24)                                         oldest open 43 days     │
+│ ▸ Done & score (37)                this week: 0 Jira · 1 merged · 1 reviewed           │
 └────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -23,6 +24,9 @@ and a place to keep **daily notes** — saved as Markdown in a folder you choose
 - **My pull requests** — what's pending: draft, merge conflicts, failing or running CI, changes
   requested, unresolved threads, behind base, waiting for reviewers, or ready to merge
 - **Needs my review** — oldest first, with how long each has been open (amber ≥ 3 days, red ≥ 7)
+- **Done & score** — your score, week by week: Jira issues moved to Done, PRs merged and PRs
+  reviewed over the last 8 weeks (a table, this week highlighted), followed by the finished items
+  themselves. A tile shows this week's total. Each day's log also records what was finished that day
 - **Today's notes** — a running log: type what you did, decided or got blocked on and click
   **Add** (or <kbd>Ctrl</kbd>+<kbd>Enter</kbd>); each entry is saved instantly with its time and
   can be deleted. The section also lists today's notes on individual items
@@ -87,6 +91,7 @@ Progress files go to `~/daily-progress` by default:
 With the `udham-swe` plugin installed, just ask Claude Code:
 
 - "What's on my plate today?" · "Give me my standup" · "What did I note this week?"
+- "How did we do this month?" · "What did I finish last week?" (the weekly score)
 - "Which reviews have waited longest? Review the oldest one."
 - "Add a note on PROJ-123: blocked on the schema change" · "Log that I finished the api review"
 
@@ -104,8 +109,10 @@ ready, Jira comments or transitions).
 | `progressDir` | `~/daily-progress` | Where notes are saved |
 | `openBrowser` | `true` | Open the page on start |
 | `githubCacheSeconds` | `120` | Reuse GitHub data between page loads |
+| `scoreWeeks` | `8` | Weeks in the score table (this week + the previous ones) |
 | `jira.site` | *(empty — required)* | Your Jira site, e.g. `your-company.atlassian.net` |
 | `jira.jql` | open issues assigned to you | Which issues to show |
+| `jira.doneJql` | issues you moved to Done recently | Finished issues for the score; `{days}` is filled in from `scoreWeeks` (×7, plus a week of slack); `""` turns it off |
 | `jira.refreshMinutes` | `60` | Background Jira refresh (`0` = only on Refresh) |
 | `jira.mode` | `claude` | `claude` or `token` |
 | `jira.claudeModel` | `haiku` | Model for the headless Claude call |
@@ -114,8 +121,9 @@ ready, Jira comments or transitions).
 ### Jira source
 
 - **`claude`** (default) — runs `claude -p` headless with the Atlassian connector, allowed to use
-  only the Jira search tool. ~20 s and about $0.01 per refresh with Haiku (counts toward plan usage
-  on a subscription). Results are validated; if a refresh fails, the last good data stays on screen.
+  only the Jira search tool; one call runs both searches (open and done). ~20–30 s and about $0.01
+  per refresh with Haiku (counts toward plan usage on a subscription). Results are validated; if a
+  refresh fails, the last good data stays on screen.
 - **`token`** — create a token at id.atlassian.com → Security → API tokens, set
   `"jira": { "mode": "token", "email": "you@company.com" }`, and put the token in the
   `JIRA_API_TOKEN` environment variable. No Claude call.

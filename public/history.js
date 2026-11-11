@@ -1,5 +1,5 @@
 // History page: every saved day, newest first, with its notes and the data snapshot.
-import { $, api, describeKey, esc, icon, initTheme, longDate, pill, safeUrl, short, timeOf, toast } from "./shared.js";
+import { $, api, describeKey, esc, icon, initTheme, longDate, pill, prLink, reviewPill, safeUrl, timeOf, toast } from "./shared.js";
 
 let DAYS = [];          // from /api/history (notes + entries + counts per day)
 let selected = null;    // date string
@@ -41,6 +41,17 @@ function itemNotesBlock(day) {
   }).join("")}</ul>`;
 }
 
+function doneBlock(day) {
+  const done = day.done ?? {};
+  const jira = done.jira ?? [], prs = done.prs ?? [], reviewed = done.reviewed ?? [];
+  if (!jira.length && !prs.length && !reviewed.length) return "";
+  return `<h3>Done that day</h3><ul class="snapshot">` +
+    jira.map((j) => `<li><a class="key" href="${esc(safeUrl(j.url))}" target="_blank" rel="noopener">${esc(j.key)}</a> ${esc(j.summary)} ${pill("good", j.status, true)}</li>`).join("") +
+    prs.map((pr) => `<li>${prLink(pr)} ${esc(pr.title)} ${pr.merged ? pill("good", "merged", true) : pill("info", "closed")}</li>`).join("") +
+    reviewed.map((pr) => `<li>Reviewed ${prLink(pr)} ${esc(pr.title)} <span class="muted">by ${esc(pr.author)}</span> ${reviewPill(pr.lastReviewState)}</li>`).join("") +
+    `</ul>`;
+}
+
 function snapshotBlock(day) {
   const gh = day.github ?? { mine: [], toReview: [] };
   const jira = day.jira ?? [];
@@ -49,10 +60,10 @@ function snapshotBlock(day) {
     <h4>Jira (${jira.length})</h4>${jira.length ? list(jira.map((j) =>
       `<li><a class="key" href="${esc(safeUrl(j.url))}" target="_blank" rel="noopener">${esc(j.key)}</a> ${esc(j.summary)} ${pill("info", j.status)}</li>`)) : '<p class="empty">None</p>'}
     <h4>My pull requests (${gh.mine.length})</h4>${gh.mine.length ? list(gh.mine.map((pr) =>
-      `<li><a class="key" href="${esc(safeUrl(pr.url))}" target="_blank" rel="noopener">${esc(short(pr.repo))}#${pr.number}</a> ${esc(pr.title)}
+      `<li>${prLink(pr)} ${esc(pr.title)}
        <div class="chips">${(pr.pending ?? []).map((n) => pill(n.level, n.text, true)).join("")}</div></li>`)) : '<p class="empty">None</p>'}
     <h4>Needs my review (${gh.toReview.length})</h4>${gh.toReview.length ? list(gh.toReview.map((pr) =>
-      `<li><a class="key" href="${esc(safeUrl(pr.url))}" target="_blank" rel="noopener">${esc(short(pr.repo))}#${pr.number}</a> ${esc(pr.title)} <span class="muted">by ${esc(pr.author)}</span></li>`)) : '<p class="empty">None</p>'}
+      `<li>${prLink(pr)} ${esc(pr.title)} <span class="muted">by ${esc(pr.author)}</span></li>`)) : '<p class="empty">None</p>'}
   </details>`;
 }
 
@@ -72,7 +83,7 @@ async function select(date, { push = true } = {}) {
         <div class="hint">${pill("info", `${n} note${n === 1 ? "" : "s"}`)}${pill("info", `${day.jira.length} Jira`)}
           ${pill("info", `${day.github.mine.length} PRs`)}${pill("info", `${day.github.toReview.length} to review`)}</div>
       </div>
-      <h3>Notes</h3>${notesBlock(day)}${itemNotesBlock(day)}${snapshotBlock(day)}
+      <h3>Notes</h3>${notesBlock(day)}${itemNotesBlock(day)}${doneBlock(day)}${snapshotBlock(day)}
       <p class="muted small">Saved ${day.savedAt ? new Date(day.savedAt).toLocaleString() : "?"} · file <code>${esc(day.date)}.md</code></p>`;
   } catch (e) {
     pane.innerHTML = `<div class="banner bad">${icon("alert")}${esc(e.message)}</div>`;

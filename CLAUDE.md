@@ -43,6 +43,8 @@ lib/github.js      gh GraphQL: collectGithub(), pendingNotes(pr)
 lib/jira.js        createJiraSource(cfg.jira, cacheFile, fetcher?): claude -p or REST token,
                    normalizeIssues() validation, cache, de-duplicated refresh()
 lib/progress.js    saveProgress (merging), loadProgress, history, toMarkdown, mergeNotes
+lib/score.js       weeklyScore (Jira done / PRs merged / PRs reviewed per week), doneOn(date), scoreSince
+lib/dates.js       local-calendar helpers: localDate, addDays, weekStart (Monday), dateOf(iso)
 lib/config.js      ~/.daily-dashboard/config.json with DEFAULTS; env overrides
 lib/fsutil.js      writeFileAtomic (temp + rename), readJson
 public/            index.html + main.js (dashboard), history.html + history.js (/history),
@@ -70,11 +72,11 @@ test/              node:test suites
 | Endpoint | Notes |
 |---|---|
 | `GET /api/ping` | must return `{"app":"daily-dashboard"}` — single-instance detection and `dd.js` rely on it |
-| `GET /api/data` | read-only: `github{login,mine[],toReview[]}`, `githubError`, `githubFetchedAt`, `jira[]`, `jiraStatus{running,error,fetchedAt,source}`, `progressDir`, `today`, `todayNotes`, `todayEntries`, `previous{date,notes,entries}` |
+| `GET /api/data` | read-only: `github{login,mine[],toReview[],closed[],reviewed[]}`, `githubError`, `githubFetchedAt`, `jira[]` (open), `jiraDone[]`, `jiraStatus{running,error,fetchedAt,source}`, `score{since,weeks[{start,end,jiraDone,prsMerged,prsReviewed,total}],totals}` (current week first), `progressDir`, `today`, `todayNotes`, `todayEntries`, `previous{date,notes,entries}` |
 | `POST /api/refresh` | starts a Jira refresh (runs Claude), refetches GitHub, returns the same payload as `/api/data`. POST because it costs money |
 | `GET /api/status` | `{ jiraStatus }` |
-| `GET /api/history?days=N` | `{ progressDir, days: [{ date, savedAt, notes, entries, counts }] }` (N ≤ 366) |
-| `GET /api/day?date=YYYY-MM-DD` | one day in full: `{ date, savedAt, notes, entries, jira, github }`; 404 if none, 400 on a bad date |
+| `GET /api/history?days=N` | `{ progressDir, days: [{ date, savedAt, notes, entries, counts{jira,myPRs,toReview,done} }] }` (N ≤ 366) |
+| `GET /api/day?date=YYYY-MM-DD` | one day in full: `{ date, savedAt, notes, entries, jira, github{login,mine,toReview}, done{jira,prs,reviewed} }` (`done` = finished *that day*); 404 if none, 400 on a bad date |
 | `POST /api/save` `{notes}` | item notes; **merges**: sent keys replace, `""` deletes, unsent keys kept. Returns `{ date, files, notes, entries }` |
 | `POST /api/entries` `{text}` | appends `{ id, at, text }` to today's log. Returns `{ entry, date, files, notes, entries }` |
 | `POST /api/entries/delete` `{id}` | removes a log entry (400 if not found) |
@@ -113,7 +115,21 @@ Changing a field, key format or endpoint means updating `dd.js` and `SKILL.md` i
 - **Jira via Claude**: `claude -p` is spawned with the prompt on **stdin** (on Windows `claude`
   is a `.cmd` shim run through `cmd.exe`, where free-text arguments break), `--allowedTools`
   limited to the Jira search tool, `--no-session-persistence`, cwd = temp dir, and
-  `UDHAM_FLASH_DISABLE=1` so the user's "flash when done" Stop hook doesn't fire. ~20 s per call.
+  `UDHAM_FLASH_DISABLE=1` so the user's "flash when done" Stop hook doesn't fire. One call runs
+  two searches (`jira.jql` → open, `jira.doneJql` → done) and must answer `{"open":[],"done":[]}`;
+  `normalizeResult` also accepts a bare array (old caches). ~20–30 s per call.
+- **Score** is computed on every `/api/data` from `jiraDone` + `github.closed/reviewed`
+  (`weeklyScore`, weeks start Monday, local dates). `collectGithub({ since })` is asked only for
+  PRs closed/updated since the oldest week (paginated, `sort:updated-desc`, ≤ 500 each);
+  `jira.doneJql` gets `{days}` = `scoreWeeks × 7 + 7` (a rolling window that always reaches the
+  table's oldest Monday), and the server trims all three lists to `score.since`
+  (`withinWindow`) so the lists and the table agree. A Jira issue counts on
+  `statusCategoryChangedAt ?? resolved` (`doneDate`) — never on `updated`.
+  The day file stores only what finished *that day* (`doneOn`), never the full lists; because
+  that snapshot is taken at the day's last write, `/api/day` and `/api/history` top it up from
+  live data for days still inside the window (`mergeDone`).
+- `merge()` returns a `structuredClone` of the defaults — never hand out `DEFAULTS` sub-objects
+  (an earlier `{ ...base }` let `loadConfig` mutate `DEFAULTS.jira`).
 - **Notes have two writers** (the page and Claude). The page only sends notes edited in that
   browser (`dirty`), and the server merges. Don't change Save to send all boxes.
 - Dates are **local** (`localDate()`), so the day's file matches the user's calendar.

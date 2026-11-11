@@ -110,7 +110,8 @@ select { cursor: pointer; }
 /* ---------- Layout ---------- */
 main { max-width: 1120px; margin: 0 auto; padding: 22px 28px 48px; }
 
-.tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
+.tiles { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
+@media (max-width: 1000px) { .tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 .tile {
   text-align: left; cursor: pointer; font: inherit; color: inherit;
   background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px;
@@ -214,6 +215,19 @@ a.btn { text-decoration: none; }
 .item-notes li { padding: 8px 4px; border-bottom: 1px solid var(--line); }
 .item-notes li:last-child { border-bottom: 0; }
 .prev-day { display: flex; align-items: center; gap: 6px; margin: 14px 0 0; color: var(--muted); font-size: 12px; }
+
+/* ---------- Done & score ---------- */
+.score { width: 100%; border-collapse: collapse; margin: 6px 0 4px; font-variant-numeric: tabular-nums; }
+.score th, .score td { padding: 7px 10px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.score th:first-child, .score td:first-child { text-align: left; white-space: normal; }
+.score thead th { color: var(--muted); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.score tbody tr.now td { font-weight: 650; background: color-mix(in srgb, var(--accent) 9%, transparent); }
+.score tbody tr.now td:first-child { border-radius: 8px 0 0 8px; } .score tbody tr.now td:last-child { border-radius: 0 8px 8px 0; }
+.score tfoot td { font-weight: 650; border-top: 2px solid var(--line); border-bottom: 0; }
+.score td.zero { color: var(--muted); }
+.score .range { color: var(--muted); font-weight: 400; font-size: 12px; margin-left: 6px; }
+.done-list .item { padding: 8px 0; }
+.done-list .row .title { min-width: 160px; }
 
 /* ---------- History page ---------- */
 main.history { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 18px; align-items: start; }

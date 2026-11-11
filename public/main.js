@@ -1,5 +1,5 @@
 // Daily Dashboard page. Talks only to this app's own API (see lib/server.js).
-import { $, ago, api, daysSince, describeKey, esc, icon, initTheme, longDate, pill, safeUrl, short, since, store, timeOf, toast } from "./shared.js";
+import { $, ago, api, dayOf, daysSince, describeKey, esc, icon, initTheme, longDate, pill, prLink, reviewPill, safeUrl, shortDate, since, store, timeOf, toast } from "./shared.js";
 
 const KEY_RE = /\b[A-Z][A-Z0-9]+-\d+\b/g;
 const ageLevel = (days, warn, bad) => (days >= bad ? "bad" : days >= warn ? "warn" : "info");
@@ -140,6 +140,11 @@ function renderTiles() {
   tile("tile-today", "pen", "Today's notes", entries.length + Object.keys(DATA.todayNotes ?? {}).length,
     unsaved ? `${unsaved} unsaved on items` : entries.length ? `last at ${timeOf(entries.at(-1).at)}` : "none yet",
     unsaved ? "warn" : "");
+
+  const [week, last] = DATA.score?.weeks ?? [];
+  if (week) tile("tile-week", "trophy", "Done this week", week.total,
+    `${week.jiraDone} Jira · ${week.prsMerged} merged · ${week.prsReviewed} reviewed`,
+    last && week.total > last.total ? "good" : "");
 }
 
 function render() {
@@ -158,7 +163,6 @@ function render() {
 
   const prsByKey = {};
   for (const pr of gh.mine) for (const k of new Set(`${pr.title} ${pr.branch}`.match(KEY_RE) ?? [])) (prsByKey[k] ??= []).push(pr);
-  const prLink = (pr) => `<a href="${esc(safeUrl(pr.url))}" target="_blank" rel="noopener">${esc(short(pr.repo))}#${pr.number}</a>`;
 
   // My Jira
   const order = { "In Progress": 0, "To Do": 1 };
@@ -172,7 +176,7 @@ function render() {
       const dur = j.statusCategory === "In Progress"
         ? pill(d >= 14 ? "bad" : d >= 7 ? "warn" : "good", `in progress ${ago(j.statusCategoryChangedAt)}`, true)
         : pill("info", `not started · created ${ago(j.created)} ago`);
-      const prs = prsByKey[j.key]?.map(prLink).join(", ");
+      const prs = prsByKey[j.key]?.map((pr) => prLink(pr, "")).join(", ");
       return `<div class="item"><div class="row">
         <a class="key" href="${esc(safeUrl(j.url))}" target="_blank" rel="noopener">${esc(j.key)}</a>
         <span class="title">${esc(j.summary)}</span>${pill("info", j.status)}${dur}</div>
@@ -188,7 +192,7 @@ function render() {
     (blocked ? pill("bad", `${blocked} blocked`, true) : "") + (ready ? pill("good", `${ready} ready to merge`, true) : "") +
     (drafts ? pill("info", `${drafts} draft`) : ""),
     gh.mine.length ? gh.mine.map((pr) => `<div class="item"><div class="row">
-        <a class="key" href="${esc(safeUrl(pr.url))}" target="_blank" rel="noopener">${esc(short(pr.repo))}#${pr.number}</a>
+        ${prLink(pr)}
         <span class="title">${esc(pr.title)}</span>${pill("info", `open ${ago(pr.createdAt)}`)}</div>
         <div class="chips">${pr.pending.map((n) => pill(n.level, n.text, true)).join("")}</div>
         <div class="sub">${esc(pr.branch)} → ${esc(pr.base)} · updated ${ago(pr.updatedAt)} ago</div>
@@ -200,11 +204,13 @@ function render() {
   $("sec-review").innerHTML = section("Needs my review", reviews.length,
     reviews.length ? pill(ageLevel(oldest, 3, 7), `oldest open ${ago(reviews[0].createdAt)}`, true) : "",
     reviews.length ? reviews.map((pr) => `<div class="item"><div class="row">
-        <a class="key" href="${esc(safeUrl(pr.url))}" target="_blank" rel="noopener">${esc(short(pr.repo))}#${pr.number}</a>
+        ${prLink(pr)}
         <span class="title">${esc(pr.title)}</span>${pr.draft ? pill("info", "draft") : ""}
         ${pill(ageLevel(daysSince(pr.createdAt), 3, 7), `open ${ago(pr.createdAt)}`, true)}</div>
         <div class="sub">by ${esc(pr.author)} · updated ${ago(pr.updatedAt)} ago</div>
         ${noteBox(`review:${pr.repo}#${pr.number}`)}</div>`).join("") : '<p class="empty">Nothing waiting on you. 🎉</p>');
+
+  renderDone();
 
   for (const d of document.querySelectorAll("details.sec")) if (d.id in open) d.open = open[d.id];
   applyNotes(DATA.todayNotes);   // saved today (by the page or by Claude)
@@ -213,6 +219,41 @@ function render() {
   noteEls().forEach(autosize);
   updateSaveButton();
   renderToday();
+}
+
+// Done & score: the weekly table ("our score"), then what was finished — Jira issues moved to
+// Done, my merged/closed PRs, and PRs I reviewed — over the same weeks.
+function renderDone() {
+  const sc = DATA.score ?? { weeks: [], totals: {} };
+  const jiraDone = DATA.jiraDone ?? [];
+  const closed = DATA.github.closed ?? [];
+  const reviewed = DATA.github.reviewed ?? [];
+  const [week] = sc.weeks;
+  const td = (n) => `<td class="${n ? "" : "zero"}">${n}</td>`;
+  const label = (w, i) => `${i === 0 ? "This week" : i === 1 ? "Last week" : shortDate(w.start)}` +
+    `<span class="range">${i < 2 ? `${shortDate(w.start)} – ${shortDate(w.end)}` : `– ${shortDate(w.end)}`}</span>`;
+  const list = (title, items, row) =>
+    `<h3>${esc(title)} (${items.length})</h3>` + (items.length
+      ? `<div class="done-list">${items.map((it) => `<div class="item"><div class="row">${row(it)}</div></div>`).join("")}</div>`
+      : '<p class="empty">None in this period.</p>');
+
+  const table = sc.weeks.length ? `<table class="score">
+    <thead><tr><th>Week</th><th>Jira done</th><th>PRs merged</th><th>PRs reviewed</th><th>Total</th></tr></thead>
+    <tbody>${sc.weeks.map((w, i) => `<tr class="${i === 0 ? "now" : ""}"><td>${label(w, i)}</td>${td(w.jiraDone)}${td(w.prsMerged)}${td(w.prsReviewed)}${td(w.total)}</tr>`).join("")}</tbody>
+    <tfoot><tr><td>${sc.weeks.length} weeks</td>${td(sc.totals.jiraDone)}${td(sc.totals.prsMerged)}${td(sc.totals.prsReviewed)}${td(sc.totals.total)}</tr></tfoot>
+  </table>` : "";
+
+  $("sec-done").innerHTML = section("Done & score", sc.totals.total ?? 0,
+    week ? pill(week.total ? "good" : "info", `this week: ${week.jiraDone} Jira · ${week.prsMerged} merged · ${week.prsReviewed} reviewed`, Boolean(week.total)) : "",
+    table +
+    list("Jira done", jiraDone, (j) =>
+      `<a class="key" href="${esc(safeUrl(j.url))}" target="_blank" rel="noopener">${esc(j.key)}</a><span class="title">${esc(j.summary)}</span>` +
+      `${pill("info", j.status)}${pill("good", `done ${dayOf(j.statusCategoryChangedAt ?? j.resolved)}`, true)}`) +   // same rule as lib/score.js doneDate()
+    list("My pull requests merged or closed", closed, (pr) =>
+      `${prLink(pr)}<span class="title">${esc(pr.title)}</span>${pr.merged ? pill("good", `merged ${dayOf(pr.closedAt)}`, true) : pill("info", `closed ${dayOf(pr.closedAt)}`)}`) +
+    list("Reviewed by me", reviewed, (pr) =>
+      `${prLink(pr)}<span class="title">${esc(pr.title)} <span class="muted">by ${esc(pr.author)}</span></span>` +
+      `${reviewPill(pr.lastReviewState)}${pill("info", `${pr.reviews.length > 1 ? `${pr.reviews.length} rounds · ` : ""}last ${dayOf(pr.lastReviewAt)}`)}`));
 }
 
 // ---------- data ----------

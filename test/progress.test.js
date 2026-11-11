@@ -78,5 +78,33 @@ test("history is newest first and limited", () => {
   for (const d of ["2026-11-08", "2026-11-09", "2026-11-10"]) saveProgress(dir, { summary: d }, jira, github, d);
   const h = history(dir, 2);
   assert.deepEqual(h.map((x) => x.date), ["2026-11-10", "2026-11-09"]);
-  assert.deepEqual(h[0].counts, { jira: 1, myPRs: 1, toReview: 0 });
+  assert.deepEqual(h[0].counts, { jira: 1, myPRs: 1, toReview: 0, done: 0 });
+});
+
+test("the day file records what was finished that day, not the whole closed/reviewed lists", () => {
+  const at = (ymd, hm = "10:00") => new Date(`${ymd}T${hm}`).toISOString();
+  const gh = { ...github, login: "me",
+    closed: [{ repo: "o/r", number: 1, title: "Merged today", url: "u1", merged: true, closedAt: at("2026-11-11") },
+      { repo: "o/r", number: 2, title: "Old", url: "u2", merged: true, closedAt: at("2026-10-01") }],
+    reviewed: [{ repo: "o/x", number: 3, title: "Reviewed today", url: "u3", author: "ana", lastReviewState: "CHANGES_REQUESTED", reviews: [{ state: "CHANGES_REQUESTED", at: at("2026-11-11", "15:00") }] }] };
+  const jiraDone = [{ key: "PROJ-9", summary: "Finished", url: "j9", status: "Closed", statusCategory: "Done", statusCategoryChangedAt: at("2026-11-11", "17:30") },
+    { key: "PROJ-8", summary: "Earlier", url: "j8", status: "Closed", statusCategory: "Done", statusCategoryChangedAt: at("2026-11-04") }];
+  saveProgress(dir, { summary: "s" }, jira, gh, "2026-11-11", { jiraDone });
+
+  const json = JSON.parse(fs.readFileSync(path.join(dir, "2026-11-11.json"), "utf8"));
+  assert.deepEqual(json.done.jira.map((j) => j.key), ["PROJ-9"]);
+  assert.deepEqual(json.done.prs.map((p) => p.number), [1]);
+  assert.deepEqual(json.done.reviewed.map((p) => p.number), [3]);
+  assert.deepEqual(Object.keys(json.github).sort(), ["login", "mine", "toReview"], "long lists stay out of the snapshot");
+  const md = fs.readFileSync(path.join(dir, "2026-11-11.md"), "utf8");
+  assert.match(md, /## Done today \(3\)\n\n- \[PROJ-9\]\(j9\) Finished — \*\*Closed\*\*\n- \[o\/r#1\]\(u1\) Merged today — \*\*merged\*\*\n- Reviewed \[o\/x#3\]\(u3\) Reviewed today — changes requested\n/);
+  assert.equal(readDayFull(dir, "2026-11-11").done.prs.length, 1);
+  assert.equal(history(dir, 1)[0].counts.done, 3);
+
+  // Nothing finished → no "Done today" heading, and old files without `done` still read back.
+  saveProgress(dir, { summary: "s" }, jira, github, "2026-11-12");
+  assert.doesNotMatch(fs.readFileSync(path.join(dir, "2026-11-12.md"), "utf8"), /Done today/);
+  const legacy = JSON.parse(fs.readFileSync(path.join(dir, "2026-11-12.json"), "utf8"));
+  delete legacy.done; fs.writeFileSync(path.join(dir, "2026-11-12.json"), JSON.stringify(legacy));
+  assert.deepEqual(readDayFull(dir, "2026-11-12").done, { jira: [], prs: [], reviewed: [] });
 });

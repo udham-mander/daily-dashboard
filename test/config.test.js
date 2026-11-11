@@ -41,7 +41,20 @@ test("validateConfig rejects values that could reach a command line or URL", () 
   bad({ jira: { tokenEnv: "JIRA TOKEN" } }, /tokenEnv/);
   bad({ jira: { refreshMinutes: -1 } }, /refreshMinutes/);
   bad({ githubCacheSeconds: "soon" }, /githubCacheSeconds/);
+  bad({ scoreWeeks: 0 }, /scoreWeeks/);
+  bad({ scoreWeeks: 2.5 }, /scoreWeeks/);
+  bad({ jira: { doneJql: 42 } }, /doneJql/);
   assert.doesNotThrow(() => validateConfig(valid(), "cfg"));
+  const noDone = valid(); noDone.jira.doneJql = "";
+  assert.doesNotThrow(() => validateConfig(noDone, "cfg"), "an empty doneJql disables the done search");
+});
+
+test("loadConfig fills {days} in jira.doneJql from scoreWeeks", () => {
+  const cfg = loadConfig({ env: {}, file: tmpFile(JSON.stringify({ scoreWeeks: 6 })) });
+  assert.match(cfg.jira.doneJql, /statusCategoryChangedDate >= -49d/, "6 weeks + a week of slack");
+  assert.doesNotMatch(cfg.jira.doneJql, /\{days\}/);
+  assert.equal(loadConfig({ env: {}, file: tmpFile() }).jira.doneJql.includes("-63d"), true, "default 8 weeks");
+  assert.match(DEFAULTS.jira.doneJql, /\{days\}/, "the shared defaults were not mutated");
 });
 
 test("loadConfig creates defaults, applies the file and env overrides, and validates", () => {

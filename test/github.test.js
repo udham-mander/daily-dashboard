@@ -56,8 +56,9 @@ test("collectGithub runs four searches, paginates the score ones and sorts them 
   const qs = calls.map((c) => c.q);
   assert.ok(qs.some((q) => q === "is:pr is:open archived:false author:me"));
   assert.ok(qs.some((q) => q === "is:pr is:open archived:false review-requested:me"));
-  assert.ok(qs.some((q) => q === "is:pr is:closed archived:false author:me closed:>=2026-09-21 sort:updated-desc"));
-  assert.ok(qs.some((q) => q === "is:pr archived:false reviewed-by:me -author:me updated:>=2026-09-21 sort:updated-desc"));
+  // one day earlier than `since`: GitHub compares in UTC, the window is local
+  assert.ok(qs.some((q) => q === "is:pr is:closed archived:false author:me closed:>=2026-09-20 sort:updated-desc"), qs.join("\n"));
+  assert.ok(qs.some((q) => q === "is:pr archived:false reviewed-by:me -author:me updated:>=2026-09-20 sort:updated-desc"));
   assert.equal(calls.filter((c) => c.after === "c1").length, 1, "the second page used the cursor");
   assert.equal(calls.length, 5);
 });

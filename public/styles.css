@@ -107,6 +107,25 @@ svg.i { width: 16px; height: 16px; flex: none; }
 .btn.small { height: 28px; padding: 3px 10px; font-size: 12px; }
 select { cursor: pointer; }
 
+/* ---------- Launch Claude: split button + folder menu ---------- */
+.split { position: relative; display: inline-flex; }
+.split > .btn:first-child { border-radius: 8px 0 0 8px; }
+.split > .caret { border-radius: 0 8px 8px 0; margin-left: -1px; padding: 6px 7px; }
+.menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; width: min(440px, calc(100vw - 32px));
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow-lg); padding: 6px; text-align: left; }
+.menu h5 { margin: 6px 10px 4px; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.menu-item { display: flex; align-items: center; gap: 8px; width: 100%; font: inherit; color: var(--text);
+  background: none; border: 0; border-radius: 6px; padding: 7px 10px; cursor: pointer; text-align: left; }
+.menu-item:hover { background: var(--surface-2); }
+.menu-item b { font-weight: 600; white-space: nowrap; }
+.menu-item .path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted);
+  font: 12px/1.4 ui-monospace, "Cascadia Code", Consolas, monospace; }
+.menu-item .tag { color: var(--muted); font-size: 11px; border: 1px solid var(--line); border-radius: 999px; padding: 0 7px; }
+.menu-form { display: flex; gap: 6px; padding: 8px 6px 4px; border-top: 1px solid var(--line); margin-top: 4px; }
+.menu-form input { flex: 1; min-width: 0; font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px;
+  background: var(--surface-2); color: var(--text); }
+.menu-form input:focus { outline: none; border-color: var(--accent); }
+
 /* ---------- Layout ---------- */
 main { max-width: 1120px; margin: 0 auto; padding: 22px 28px 48px; }
 

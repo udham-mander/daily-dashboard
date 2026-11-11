@@ -248,12 +248,55 @@ function renderDone() {
     table +
     list("Jira done", jiraDone, (j) =>
       `<a class="key" href="${esc(safeUrl(j.url))}" target="_blank" rel="noopener">${esc(j.key)}</a><span class="title">${esc(j.summary)}</span>` +
-      `${pill("info", j.status)}${pill("good", `done ${dayOf(j.statusCategoryChangedAt ?? j.resolved)}`, true)}`) +   // same rule as lib/score.js doneDate()
+      `${pill("info", j.status)}${pill("good", `done ${dayOf(j.doneAt)}`, true)}`) +
     list("My pull requests merged or closed", closed, (pr) =>
       `${prLink(pr)}<span class="title">${esc(pr.title)}</span>${pr.merged ? pill("good", `merged ${dayOf(pr.closedAt)}`, true) : pill("info", `closed ${dayOf(pr.closedAt)}`)}`) +
     list("Reviewed by me", reviewed, (pr) =>
       `${prLink(pr)}<span class="title">${esc(pr.title)} <span class="muted">by ${esc(pr.author)}</span></span>` +
       `${reviewPill(pr.lastReviewState)}${pill("info", `${pr.reviews.length > 1 ? `${pr.reviews.length} rounds · ` : ""}last ${dayOf(pr.lastReviewAt)}`)}`));
+}
+
+// ---------- launch Claude ----------
+// A split button: the main part opens a new Claude Code session in the default folder, the
+// caret offers the default, the 5 most recent folders, and a box for any other folder.
+const baseName = (p) => p.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || p;
+
+function renderLaunchMenu() {
+  const c = DATA?.claude;
+  const item = (dir, tag) => `<button class="menu-item" data-dir="${esc(dir)}" role="menuitem">${icon("terminal")}<b>${esc(baseName(dir))}</b>` +
+    `<span class="path">${esc(dir)}</span>${tag ? `<span class="tag">${esc(tag)}</span>` : ""}</button>`;
+  $("launchMenu").innerHTML = !c ? '<p class="empty small">Launching is not available.</p>'
+    : `<h5>New Claude session in…</h5>${item(c.defaultDir, "default")}` +
+      (c.recent.length ? `<h5>Recent</h5>${c.recent.map((d) => item(d)).join("")}` : "") +
+      `<form class="menu-form" id="launchForm"><label class="visually-hidden" for="launchDir">Other folder</label>` +
+      `<input id="launchDir" placeholder="Other folder, e.g. C:\\Workspace\\my-repo" autocomplete="off" spellcheck="false">` +
+      `<button class="btn small primary" type="submit">Open</button></form>`;
+}
+
+function toggleLaunchMenu(open = $("launchMenu").hidden) {
+  if (open) renderLaunchMenu();
+  $("launchMenu").hidden = !open;
+  $("launchMenuBtn").setAttribute("aria-expanded", String(open));
+  if (open) $("launchDir")?.focus();
+}
+
+let launching = false;   // one launch at a time, whether it came from the button, the menu or the L key
+async function launchClaude(dir) {
+  toggleLaunchMenu(false);
+  if (launching) return;
+  launching = true;
+  const btn = $("launchBtn");
+  btn.disabled = true;
+  try {
+    const r = await api("/api/launch", dir ? { dir } : {});
+    if (DATA) DATA.claude = { ...DATA.claude, defaultDir: r.defaultDir, recent: r.recent };
+    toast(`Claude is starting in ${r.dir}`);
+  } catch (e) {
+    toast(`Could not launch Claude: ${e.message}`, "alert");
+  } finally {
+    launching = false;
+    btn.disabled = false;
+  }
 }
 
 // ---------- data ----------
@@ -333,6 +376,13 @@ $("historyLink").innerHTML = `${icon("history")}<span>History</span>`;
 $("addBtn").innerHTML = `${icon("plus")}<span>Add</span>`;
 $("quitBtn").innerHTML = `${icon("power")}<span>Quit</span>`;
 $("refreshBtn").addEventListener("click", () => load({ refresh: true }));
+$("launchBtn").innerHTML = `${icon("terminal")}<span>Launch Claude</span>`;
+$("launchMenuBtn").innerHTML = icon("chevron");
+$("launchBtn").addEventListener("click", () => launchClaude());
+$("launchMenuBtn").addEventListener("click", (e) => { e.stopPropagation(); toggleLaunchMenu(); });
+$("launchMenu").addEventListener("click", (e) => { e.stopPropagation(); const b = e.target.closest(".menu-item"); if (b) launchClaude(b.dataset.dir); });
+$("launchMenu").addEventListener("submit", (e) => { e.preventDefault(); const v = $("launchDir").value.trim(); if (v) launchClaude(v); });
+document.addEventListener("click", () => { if (!$("launchMenu").hidden) toggleLaunchMenu(false); });
 $("saveBtn").addEventListener("click", saveItemNotes);
 $("quitBtn").addEventListener("click", quit);
 $("composer").addEventListener("submit", addEntry);
@@ -377,9 +427,11 @@ for (const t of document.querySelectorAll(".tile")) {
 
 document.addEventListener("keydown", (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); saveItemNotes(); return; }
+  if (e.key === "Escape" && !$("launchMenu").hidden) { toggleLaunchMenu(false); $("launchMenuBtn").focus(); return; }
   if (e.ctrlKey || e.metaKey || e.altKey || /^(TEXTAREA|INPUT|SELECT)$/.test(e.target.tagName)) return;
   const key = e.key.toLowerCase();
   if (key === "r") load({ refresh: true });
+  else if (key === "l") launchClaude();
   else if (key === "e") $("expandAll").click();
   else if (key === "c") $("collapseAll").click();
   else if (key === "h") location.href = "/history";

@@ -45,6 +45,8 @@ lib/jira.js        createJiraSource(cfg.jira, cacheFile, fetcher?): claude -p or
 lib/progress.js    saveProgress (merging), loadProgress, history, toMarkdown, mergeNotes
 lib/score.js       weeklyScore (Jira done / PRs merged / PRs reviewed per week), doneOn(date), scoreSince
 lib/dates.js       local-calendar helpers: localDate, addDays, weekStart (Monday), dateOf(iso)
+lib/launch.js      "Launch Claude": terminalCommand() per platform, createLauncher() (validates the
+                   folder, spawns detached, keeps ~/.daily-dashboard/recent-dirs.json, 5 entries)
 lib/config.js      ~/.daily-dashboard/config.json with DEFAULTS; env overrides
 lib/fsutil.js      writeFileAtomic (temp + rename), readJson
 public/            index.html + main.js (dashboard), history.html + history.js (/history),
@@ -80,6 +82,7 @@ test/              node:test suites
 | `POST /api/save` `{notes}` | item notes; **merges**: sent keys replace, `""` deletes, unsent keys kept. Returns `{ date, files, notes, entries }` |
 | `POST /api/entries` `{text}` | appends `{ id, at, text }` to today's log. Returns `{ entry, date, files, notes, entries }` |
 | `POST /api/entries/delete` `{id}` | removes a log entry (400 if not found) |
+| `POST /api/launch` `{dir?}` | opens a new terminal running Claude in `dir` (absolute, must exist) or in `claude.defaultDir`; returns `{ ok, dir, defaultDir, command, recent[] }`. 400 for a bad folder, 404 when no launcher is injected. `/api/data` carries the same `claude{defaultDir,command,recent}` |
 | `POST /api/quit` | stops the app ~200 ms after replying |
 
 `/api/data` also returns `todayEntries` and `previous.entries`.
@@ -107,6 +110,11 @@ Changing a field, key format or endpoint means updating `dd.js` and `SKILL.md` i
 - Jira URLs are built from the key (`normalizeIssues`), never copied from input; issues from
   `claude -p` **and from the on-disk cache** are validated before use. The page renders only
   `http(s)` links (`safeUrl`). `claude -p` runs with `--max-budget-usd 0.10`.
+- **Launching Claude** spawns a terminal: the folder must be absolute and an existing directory,
+  and may not contain shell/cmd metacharacters (`" & | < > ^ % ! \` $ ;` or control chars) — it is
+  refused, not escaped. The process is spawned with an argument array (no `shell: true`); on
+  Windows that is `wt.exe -d <dir> powershell.exe -NoExit -Command <claude.command>`.
+  `claude.command` comes from the user's own config only, never from a request.
 - 500 responses say only "internal error"; details go to the log, which strips control characters.
 - `test/server.test.js` and `test/config.test.js` cover these — keep them passing.
 
@@ -132,7 +140,12 @@ Changing a field, key format or endpoint means updating `dd.js` and `SKILL.md` i
   (an earlier `{ ...base }` let `loadConfig` mutate `DEFAULTS.jira`).
 - **Notes have two writers** (the page and Claude). The page only sends notes edited in that
   browser (`dirty`), and the server merges. Don't change Save to send all boxes.
-- Dates are **local** (`localDate()`), so the day's file matches the user's calendar.
+- Dates are **local** (`localDate()`), so the day's file matches the user's calendar. GitHub
+  search date qualifiers are UTC, so `collectGithub` asks from one day before `since` and the
+  server trims (`withinWindow`). Each `jiraDone` item carries `doneAt` — clients use that, never
+  `statusCategoryChangedAt ?? resolved` themselves.
+- Folder settings (`progressDir`, `claude.defaultDir`) accept `~`; a relative path is resolved
+  from the home folder; validation then requires an absolute path.
 - The launcher `~/.daily-dashboard/launch.vbs` hard-codes this repo's path and the node path;
   re-run `npm run install-shortcut` after moving the repo or changing Node.
 - Logs: `~/.daily-dashboard/app.log`. Jira cache: `~/.daily-dashboard/jira-cache.json`.

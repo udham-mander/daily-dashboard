@@ -8,6 +8,7 @@ import path from "node:path";
 import { APP_DIR, CONFIG_FILE, loadConfig } from "./lib/config.js";
 import { collectGithub } from "./lib/github.js";
 import { createJiraSource } from "./lib/jira.js";
+import { createLauncher } from "./lib/launch.js";
 import { createServer } from "./lib/server.js";
 
 let cfg;
@@ -36,11 +37,19 @@ function openBrowser() {
 }
 
 const jira = createJiraSource(cfg.jira, path.join(APP_DIR, "jira-cache.json"));
-const refreshJira = () => jira.refresh().then(() => { if (jira.state.error) log(`jira: ${jira.state.error}`); });
+const refreshJira = () => jira.refresh().then(() => {
+  if (jira.state.error) log(`jira: ${jira.state.error}`);
+  else if (jira.state.warning) log(`jira: ${jira.state.warning}`);
+});
 const shutdown = (why) => { log(`stopped (${why})`); process.exit(0); };
 
+const launcher = createLauncher({
+  defaultDir: cfg.claude.defaultDir, command: cfg.claude.command,
+  recentFile: path.join(APP_DIR, "recent-dirs.json"),
+});
+
 const server = createServer({
-  cfg, collectGithub, jira, log,
+  cfg, collectGithub, jira, launcher, log,
   publicDir: path.join(import.meta.dirname, "public"),
   onQuit: () => shutdown("quit from page/API"),
 });

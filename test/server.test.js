@@ -5,9 +5,11 @@ import os from "node:os";
 import path from "node:path";
 import { after, before, test } from "node:test";
 import { createJiraSource } from "../lib/jira.js";
+import { createLauncher } from "../lib/launch.js";
 import { createServer } from "../lib/server.js";
 
 let server, port, dir, quit = false;
+const launched = [];
 
 // Raw requests so tests can set Host/Origin freely (fetch won't let us forge Host).
 function request(method, pathname, { headers = {}, body } = {}) {
@@ -41,6 +43,7 @@ before(async () => {
     collectGithub: async (opts) => { githubArgs = opts; return { login: "me", mine: [], toReview: [],
       closed: [{ repo: "o/r", number: 1, title: "M", url: "https://github.com/o/r/pull/1", merged: true, closedAt: new Date().toISOString() }],
       reviewed: [] }; },
+    launcher: createLauncher({ defaultDir: dir, recentFile: path.join(dir, "recent.json"), run: async (_f, _a, cwd) => { launched.push(cwd); } }),
     onQuit: () => { quit = true; },
   });
   await new Promise((r) => server.listen(port, "127.0.0.1", r));
@@ -57,6 +60,30 @@ test("score: weekly table built from done Jira, closed PRs and reviews; GitHub a
   assert.equal(data.score.totals.total, 2);
   assert.match(githubArgs.since, /^\d{4}-\d{2}-\d{2}$/);
   assert.equal(githubArgs.since, data.score.since);
+});
+
+test("POST /api/launch opens Claude in the default or a given folder and reports recent folders", async () => {
+  const r = JSON.parse((await write("/api/launch", {})).body);
+  assert.deepEqual([r.ok, r.dir, r.recent], [true, dir, []]);
+  assert.deepEqual(launched, [dir]);
+
+  const sub = path.join(dir, "repo"); fs.mkdirSync(sub);
+  const r2 = await write("/api/launch", { dir: sub });
+  assert.equal(r2.status, 200);
+  assert.deepEqual(JSON.parse(r2.body).recent, [sub]);
+  assert.deepEqual(launched, [dir, sub]);
+
+  for (const [bad, re] of [["relative/x", /absolute/], [path.join(dir, "missing"), /not found/], [`${sub} & calc`, /unsupported/]]) {
+    const res = await write("/api/launch", { dir: bad });
+    assert.equal(res.status, 400, bad);
+    assert.match(JSON.parse(res.body).error, re);
+  }
+  assert.equal(launched.length, 2, "nothing launched for bad folders");
+  assert.equal((await request("POST", "/api/launch", { body: {} })).status, 403, "writes need x-dd + origin");
+  assert.equal((await request("GET", "/api/launch")).status, 404, "never a GET");
+
+  const data = JSON.parse((await request("GET", "/api/data")).body);
+  assert.deepEqual(data.claude, { defaultDir: dir, command: "claude", recent: [sub] });
 });
 
 test("a saved day's 'done' is topped up from live data while the day is inside the score window", async () => {
@@ -133,8 +160,10 @@ test("a refresh (which runs Claude) is POST-only; GET /api/data never triggers i
     assert.equal(refreshes, 0, "the old GET trigger is gone");
     assert.equal(await req("GET", "/api/refresh"), 404);
     assert.equal(await req("POST", "/api/refresh", {}, {}), 403, "needs origin + x-dd");
-    assert.equal(await req("POST", "/api/refresh", { "x-dd": "1", origin: `http://127.0.0.1:${port2}`, "content-type": "application/json" }, {}), 200);
+    const hdrs = { "x-dd": "1", origin: `http://127.0.0.1:${port2}`, "content-type": "application/json" };
+    assert.equal(await req("POST", "/api/refresh", hdrs, {}), 200);
     assert.equal(refreshes, 1);
+    assert.equal(await req("POST", "/api/launch", hdrs, {}), 404, "no launcher injected = feature off");
   } finally {
     srv.close(); fs.rmSync(dir2, { recursive: true, force: true });
   }

@@ -27,6 +27,8 @@ and a place to keep **daily notes** — saved as Markdown in a folder you choose
 - **Done & score** — your score, week by week: Jira issues moved to Done, PRs merged and PRs
   reviewed over the last 8 weeks (a table, this week highlighted), followed by the finished items
   themselves. A tile shows this week's total. Each day's log also records what was finished that day
+- **Launch Claude** — one click opens a new Claude Code session in a terminal, in your default
+  folder; the caret next to it offers the 5 folders you used most recently, or any other folder
 - **Today's notes** — a running log: type what you did, decided or got blocked on and click
   **Add** (or <kbd>Ctrl</kbd>+<kbd>Enter</kbd>); each entry is saved instantly with its time and
   can be deleted. The section also lists today's notes on individual items
@@ -70,6 +72,7 @@ and start the app again (until then the page shows a reminder and GitHub data on
 | Refresh | **↻ Refresh** or <kbd>R</kbd>. GitHub is instant; Jira takes ~20 s and fills in when ready |
 | Log a note | <kbd>N</kbd> (or open **Today's notes**), type, then **Add** / <kbd>Ctrl</kbd>+<kbd>Enter</kbd> — saved immediately |
 | Save notes on items | **Save notes** or <kbd>Ctrl</kbd>+<kbd>S</kbd>. Unsaved item notes are kept in the browser until you save |
+| Start a Claude session | **Launch Claude** or <kbd>L</kbd> opens a new terminal running `claude` in your default folder; the **▾** caret lists recent folders and takes any other path |
 | See previous days | **History** in the header or <kbd>H</kbd>; <kbd>Esc</kbd> goes back |
 | Expand / collapse all | <kbd>E</kbd> / <kbd>C</kbd>, or click a tile to jump to its section |
 | **Stop** | **⏻ Quit** on the page · <kbd>Ctrl</kbd>+<kbd>C</kbd> if started in a terminal |
@@ -94,6 +97,7 @@ With the `udham-swe` plugin installed, just ask Claude Code:
 - "How did we do this month?" · "What did I finish last week?" (the weekly score)
 - "Which reviews have waited longest? Review the oldest one."
 - "Add a note on PROJ-123: blocked on the schema change" · "Log that I finished the api review"
+- "Open a new Claude session in the api repo"
 
 The skill starts the app if needed (without opening a browser), reads it, and saves notes that
 appear on the page. It asks before anything others would see (PR approvals or comments, marking
@@ -117,6 +121,12 @@ ready, Jira comments or transitions).
 | `jira.mode` | `claude` | `claude` or `token` |
 | `jira.claudeModel` | `haiku` | Model for the headless Claude call |
 | `jira.email` / `jira.tokenEnv` | `""` / `JIRA_API_TOKEN` | Token mode only |
+| `claude.defaultDir` | your home folder | Where **Launch Claude** opens a new session (`~` allowed) |
+| `claude.command` | `claude` | What the new terminal runs (e.g. `claude --model opus`) |
+
+**Launch Claude** opens a new Windows Terminal tab (or a console window) running PowerShell with
+that command, in the chosen folder; on macOS it uses Terminal.app, on Linux the first terminal
+emulator found. Recent folders are kept in `~/.daily-dashboard/recent-dirs.json`.
 
 ### Jira source
 

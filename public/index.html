@@ -32,6 +32,11 @@
         <option value="sepia">Sepia</option>
         <option value="contrast">High contrast</option>
       </select>
+      <div class="split">
+        <button id="launchBtn" class="btn" title="Open a new Claude Code session in the default folder (L)"></button>
+        <button id="launchMenuBtn" class="btn caret" aria-haspopup="true" aria-expanded="false" aria-label="Choose a folder for the new Claude session" title="Choose a folder"></button>
+        <div class="menu" id="launchMenu" hidden></div>
+      </div>
       <button id="refreshBtn" class="btn" title="Fetch fresh GitHub and Jira data (R)"></button>
       <button id="saveBtn" class="btn primary" title="Save notes on items (Ctrl+S)"></button>
       <button id="quitBtn" class="btn ghost" title="Stop the Daily Dashboard app"></button>
@@ -73,7 +78,7 @@
     <details class="sec" id="sec-review"></details>
     <details class="sec" id="sec-done"></details>
 
-    <p class="footnote">Shortcuts: <kbd>R</kbd> refresh · <kbd>N</kbd> new note · <kbd>Ctrl</kbd>+<kbd>S</kbd> save · <kbd>H</kbd> history · <kbd>E</kbd>/<kbd>C</kbd> expand/collapse all</p>
+    <p class="footnote">Shortcuts: <kbd>R</kbd> refresh · <kbd>N</kbd> new note · <kbd>Ctrl</kbd>+<kbd>S</kbd> save · <kbd>L</kbd> launch Claude · <kbd>H</kbd> history · <kbd>E</kbd>/<kbd>C</kbd> expand/collapse all</p>
   </main>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>

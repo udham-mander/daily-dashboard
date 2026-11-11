@@ -87,5 +87,5 @@ $sc.Save()
 Write-Host "Installed."
 Write-Host "  Shortcut : $lnk"
 Write-Host "  Launcher : $vbs"
-Write-Host "  Config   : $appDir\config.json (created on first start — then set jira.site and restart)"
+Write-Host "  Config   : $appDir\config.json (created on first start; then set jira.site and restart)"
 Write-Host "  Node     : $node"

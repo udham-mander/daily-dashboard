@@ -17,6 +17,7 @@ is saved as Markdown in a folder you choose.
 │ ┃ 2. MAYA-26 in progress 86 days with no PR — split it or move it on                          ×    │
 │ ┃ 3. Your week trails last week (1 vs 4 done) — one review would close the gap                ×    │
 │ ▸ Today's notes (6)        last at 09:40 · 4 by the agent      Activity agent · On   [+ Add]       │
+│ ▸ Claude sessions (2)                                                      2 running · 1 busy      │
 │ ▸ My Jira (9)                                    5 in progress · 5 for 14+ days                    │
 │ ▸ My pull requests (1)                                                    1 draft                  │
 │ ▸ Needs my review (24)                                        oldest open 43 days                  │
@@ -35,6 +36,10 @@ is saved as Markdown in a folder you choose.
   themselves. A tile shows this week's total. Each day's log also records what was finished that day
 - **Launch Claude** — one click opens a new Claude Code session in a terminal, in your default
   folder; the caret next to it offers the 5 folders you used most recently, or any other folder
+- **Claude sessions** — the Claude Code sessions you worked in today, from Claude Code's own
+  prompt history (title, folder, first and last prompt, how many), and the ones running right
+  now (busy or idle). **Resume** reopens a closed one in its folder (`claude --resume`). A tile
+  shows today's count
 - **Today's notes** — one list, newest first. Click **Add** (or press <kbd>N</kbd>), type what you
   did, decided or got blocked on, and confirm with **Add** or <kbd>Ctrl</kbd>+<kbd>Enter</kbd>; each
   entry is saved instantly with its time and can be deleted. The section also lists today's notes
@@ -43,8 +48,9 @@ is saved as Markdown in a folder you choose.
   notes header (on by default, remembered in the config). While on, every 2 hours within work
   hours it adds **automatic points** to the same list, marked with a small robot icon instead of
   a time: bullets that say *what* was done, not just that something happened. It reads the PR
-  descriptions, your commits of the day, the review comments and comments you wrote, and (via
-  Claude's Atlassian connector) the Jira issues you touched, then asks Claude to write the log
+  descriptions, your commits of the day, the review comments and comments you wrote, the prompts
+  you gave Claude Code that day, and (via Claude's Atlassian connector) the Jira issues you
+  touched, then asks Claude to write the log
   (`auto.useClaude: false` lists the plain activity instead). The points are never mixed into
   your own entries; `dd.js auto` rebuilds them on demand
 - **Agent's take** — a card under the tiles where the agent gives its judgement: it looks at
@@ -102,6 +108,7 @@ and start the app again (until then the page shows a reminder and GitHub data on
 | Agent's take | **×** on a point crosses it off and blacklists what it names; **n blacklisted** in the card opens the list and puts one back (or `dd.js blacklist`) |
 | Save notes on items | **Save notes** or <kbd>Ctrl</kbd>+<kbd>S</kbd>. Unsaved item notes are kept in the browser until you save |
 | Start a Claude session | **Launch Claude** or <kbd>L</kbd> opens a new terminal running `claude` in your default folder; the **▾** caret lists recent folders and takes any other path |
+| Resume a Claude session | **Resume** in the Claude sessions section opens a terminal running `claude --resume <id>` in that session's folder (closed sessions only; running ones show busy or idle) |
 | See previous days | **History** in the header or <kbd>H</kbd>; <kbd>Esc</kbd> goes back |
 | Expand / collapse all | <kbd>E</kbd> / <kbd>C</kbd>, or click a tile to jump to its section |
 | **Stop** | **⏻ Quit** on the page · <kbd>Ctrl</kbd>+<kbd>C</kbd> if started in a terminal |
@@ -116,6 +123,9 @@ Progress files go to `~/daily-progress` by default:
 ## Automatic (updated 14:00)
 - Merged dbms#63 (DSM-7528) and pushed 3 commits to ai-shield:feature/MAYA-73-file-support
 - Reviewed dbms#81 (approved)
+- Ran the AI Shield performance test and wrote the report (ai-shield session)
+## Claude sessions (1)
+- 09:12–12:40 — AI Shield performance report (ai-shield, 26 prompts)
 ## Jira (4)
 - [PROJ-123](…) Add CSV export to reports — **In Progress**, in progress 6 days
   - Note: waiting on the schema change
@@ -168,14 +178,19 @@ ready, Jira comments or transitions).
 ### Activity agent
 
 The agent reads your own GitHub event feed (`gh api users/<you>/events`: pushes, PRs opened,
-merged or closed, reviews, comments) and the Jira issues that moved or were finished that day.
-For each PR and branch involved it then fetches the details of *your* work that day (PR
-description, your commits, your review comments and comments, clipped) and asks Claude for 3–8
-past-tense bullets plus, for today, the agent's take on the current state (`claude -p`, about
-$0.01–0.03 with Haiku, capped at $0.15). The only tool that call may use is reading the Jira
-issues named in the activity through the Atlassian connector; every built-in tool is denied. If
-Claude is unavailable the plain activity lines are shown instead, with a note. Nothing is
-written on a day with no activity, and your own notes are never edited.
+merged or closed, reviews, comments), the Jira issues that moved or were finished that day, and
+the Claude Code sessions you worked in that day (from Claude Code's own records under
+`~/.claude`: the prompt history, the registry of running sessions and the title at the end of
+each transcript — read, never written). For each PR and branch involved it then fetches the
+details of *your* work that day (PR description, your commits, your review comments and
+comments, clipped), adds the prompts you gave each Claude session (the first two and the last
+six, clipped), and asks Claude for 3–8 past-tense bullets plus, for today, the agent's take on
+the current state (`claude -p`, about $0.01–0.03 with Haiku, capped at $0.15). The only tool
+that call may use is reading the Jira issues named in the activity through the Atlassian
+connector; every built-in tool is denied. If Claude is unavailable the plain activity lines are
+shown instead, with a note. Nothing is written on a day with no activity, and your own notes
+are never edited. The day's file keeps each Claude session's title, folder, times and prompt
+count — never the prompts themselves.
 
 What you cross off the take is kept in `~/.daily-dashboard/blacklist.json` (the items a point
 named — Jira keys, `repo#n` — or its wording when it named none). Later takes leave those out:
@@ -200,8 +215,11 @@ emulator found. Recent folders are kept in `~/.daily-dashboard/recent-dirs.json`
 
 Everything stays on your machine: the app listens on `127.0.0.1` only, talks to GitHub through
 your `gh` login and to Jira through Claude Code or your token, and writes only to your progress
-folder and `~/.daily-dashboard`. Its API refuses requests from other websites (Host and Origin
-checks) and the page runs under a strict Content-Security-Policy.
+folder and `~/.daily-dashboard`. It reads Claude Code's own records under `~/.claude` (session
+registry, prompt history, the end of transcripts for titles) and never writes there; the prompts
+of the day's sessions reach only the headless Claude call that writes the automatic points. Its
+API refuses requests from other websites (Host and Origin checks) and the page runs under a
+strict Content-Security-Policy.
 
 ## Troubleshooting
 

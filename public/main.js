@@ -56,7 +56,7 @@ function renderToday() {
     ...entries.map((e) => ({ at: e.at, html: `<li class="entry"><time class="when" datetime="${esc(e.at)}">${esc(timeOf(e.at))}</time>
       <div class="text">${esc(e.text)}</div>
       <button class="icon-btn" data-del="${esc(e.id)}" title="Delete note" aria-label="Delete note">${icon("trash")}</button></li>` })),
-    ...autoPoints.map((p) => ({ at: auto.updatedAt, html: `<li class="entry is-auto" title="Activity agent — written from your GitHub and Jira activity (${esc(timeOf(auto.updatedAt))})">
+    ...autoPoints.map((p) => ({ at: auto.updatedAt, html: `<li class="entry is-auto" title="Activity agent — written from your GitHub, Jira and Claude Code activity (${esc(timeOf(auto.updatedAt))})">
       <span class="when">${icon("bot", "i auto-ico")}<span class="visually-hidden">Activity agent</span></span><div class="text">${esc(p)}</div><span></span></li>` })),
   ].sort((a, b) => b.at.localeCompare(a.at));
   $("entries").innerHTML =
@@ -264,6 +264,15 @@ function renderTiles() {
     unsaved ? `${unsaved} unsaved on items` : entries.length ? `last at ${timeOf(entries.at(-1).at)}` : "none yet",
     unsaved ? "warn" : "");
 
+  const ss = DATA.sessions;
+  $("tile-claude").hidden = !ss;
+  if (ss) {
+    const busy = ss.live.filter((s) => s.status === "busy").length;
+    tile("tile-claude", "terminal", "Claude sessions", ss.today.length,
+      ss.live.length ? `${ss.live.length} running${busy ? ` · ${busy} busy` : ""}` : ss.today.length ? "none running now" : "none today",
+      ss.live.length ? "good" : "");
+  }
+
   const [week, last] = DATA.score?.weeks ?? [];
   if (week) tile("tile-week", "trophy", "Done this week", week.total,
     `${week.jiraDone} Jira · ${week.prsMerged} merged · ${week.prsReviewed} reviewed`,
@@ -333,6 +342,7 @@ function render() {
         <div class="sub">by ${esc(pr.author)} · updated ${ago(pr.updatedAt)} ago</div>
         ${noteBox(`review:${pr.repo}#${pr.number}`)}</div>`).join("") : '<p class="empty">Nothing waiting on you. 🎉</p>');
 
+  renderClaude();
   renderDone();
 
   for (const d of document.querySelectorAll("details.sec")) if (d.id in open) d.open = open[d.id];
@@ -342,6 +352,35 @@ function render() {
   noteEls().forEach(autosize);
   updateSaveButton();
   renderToday();
+}
+
+// Claude sessions: the Claude Code sessions worked in today (from Claude Code's own prompt
+// history: title, folder, first and last prompt, how many) and the ones running right now.
+// A closed one can be resumed in its folder (claude --resume); a running one shows its state.
+const localDay = (iso) => { const d = new Date(iso); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+function renderClaude() {
+  const ss = DATA.sessions;
+  const sec = $("sec-claude");
+  sec.hidden = !ss;
+  if (!ss) return;
+  const rows = [...ss.today];
+  // Running sessions without a prompt today (started yesterday, or idle since) are listed too.
+  const seen = new Set(rows.map((s) => s.id));
+  for (const l of ss.live) if (!seen.has(l.id))
+    rows.push({ id: l.id, title: l.title ?? l.name ?? l.folder, dir: l.dir, folder: l.folder, startedOn: l.startedAt ? localDay(l.startedAt) : null, first: null, last: null, prompts: 0, live: l });
+  const busy = ss.live.filter((s) => s.status === "busy").length;
+  const state = (s) => !s.live ? pill("info", "closed")
+    : s.live.status === "busy" ? pill("warn", "busy", true) : s.live.status === "idle" ? pill("good", "idle", true) : pill("good", "running", true);
+  sec.innerHTML = section("Claude sessions", ss.today.length,
+    (ss.live.length ? pill("good", `${ss.live.length} running`, true) : "") + (busy ? pill("warn", `${busy} busy`) : "") +
+    (ss.errors?.length ? pill("bad", "some records unreadable") : ""),
+    rows.length ? rows.map((s) => `<div class="item"><div class="row">
+        <span class="key">${icon("terminal")}${esc(s.folder)}</span>
+        <span class="title">${esc(s.title)}</span>${state(s)}
+        ${s.prompts ? pill("info", `${timeOf(s.first)} – ${timeOf(s.last)} · ${s.prompts} prompt${s.prompts === 1 ? "" : "s"}`) : pill("info", "no prompts today")}
+        ${s.live ? "" : `<button class="btn small resume" type="button" data-resume="${esc(s.id)}" data-dir="${esc(s.dir)}" title="Open a terminal in ${esc(s.dir)} and resume this session (claude --resume)">${icon("terminal")}<span>Resume</span></button>`}</div>
+        <div class="sub">${esc(s.dir)}${s.startedOn && s.startedOn !== DATA.today ? ` · since ${esc(shortDate(s.startedOn))}` : ""}${s.live?.lastActivityAt ? ` · last activity ${esc(since(s.live.lastActivityAt))}` : ""} · <code>${esc(s.id.slice(0, 8))}</code></div></div>`).join("")
+    : '<p class="empty">No Claude Code sessions today.</p>');
 }
 
 // Done & score: the weekly table ("our score"), then what was finished — Jira issues moved to
@@ -403,17 +442,17 @@ function toggleLaunchMenu(open = $("launchMenu").hidden) {
   if (open) $("launchDir")?.focus();
 }
 
-let launching = false;   // one launch at a time, whether it came from the button, the menu or the L key
-async function launchClaude(dir) {
+let launching = false;   // one launch at a time, whether it came from the button, the menu, the L key or a Resume button
+async function launchClaude(dir, resume) {
   toggleLaunchMenu(false);
   if (launching) return;
   launching = true;
   const btn = $("launchBtn");
   btn.disabled = true;
   try {
-    const r = await api("/api/launch", dir ? { dir } : {});
+    const r = await api("/api/launch", { ...(dir ? { dir } : {}), ...(resume ? { resume } : {}) });
     if (DATA) DATA.claude = { ...DATA.claude, defaultDir: r.defaultDir, recent: r.recent };
-    toast(`Claude is starting in ${r.dir}`);
+    toast(resume ? `Resuming the Claude session in ${r.dir}` : `Claude is starting in ${r.dir}`);
   } catch (e) {
     toast(`Could not launch Claude: ${e.message}`, "alert");
   } finally {
@@ -537,6 +576,11 @@ $("agent").addEventListener("click", (e) => {
   if (btn.id === "blacklistBtn") { showBlacklist = !showBlacklist; renderAgent(); }
   else if (btn.dataset.dismiss !== undefined) { btn.disabled = true; dismissNudge(btn.dataset.dismiss); }
   else if (btn.dataset.restore) { btn.disabled = true; restoreNudge(btn.dataset.restore); }
+});
+// Claude sessions: resume a closed one in the folder it ran in.
+$("sec-claude").addEventListener("click", (e) => {
+  const btn = e.target.closest("button[data-resume]");
+  if (btn) launchClaude(btn.dataset.dir, btn.dataset.resume);
 });
 
 // Item note boxes: track unsaved edits ("" is kept: it deletes that note on Save).

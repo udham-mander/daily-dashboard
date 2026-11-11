@@ -22,14 +22,14 @@ function renderList() {
 }
 
 // One list like the dashboard's: the user's entries with their time, the automatic points
-// (GitHub/Jira activity) with a small icon, newest first.
+// (GitHub/Jira/Claude Code activity) with a small icon, newest first.
 function notesBlock(day) {
   const entries = day.entries ?? [];
   const auto = day.auto;
   const summary = day.notes?.summary;
   const rows = [
     ...entries.map((e) => ({ at: e.at, html: `<li class="entry"><time class="when" datetime="${esc(e.at)}">${esc(timeOf(e.at))}</time><div class="text">${esc(e.text)}</div></li>` })),
-    ...(auto?.points ?? []).map((p) => ({ at: auto.updatedAt, html: `<li class="entry is-auto" title="Activity agent — written from GitHub and Jira activity (${esc(timeOf(auto.updatedAt))})">
+    ...(auto?.points ?? []).map((p) => ({ at: auto.updatedAt, html: `<li class="entry is-auto" title="Activity agent — written from GitHub, Jira and Claude Code activity (${esc(timeOf(auto.updatedAt))})">
       <span class="when">${icon("bot", "i auto-ico")}<span class="visually-hidden">Activity agent</span></span><div class="text">${esc(p)}</div></li>` })),
   ].sort((a, b) => b.at.localeCompare(a.at));
   if (!rows.length && !summary) return '<p class="empty">No notes logged this day.</p>';
@@ -47,6 +47,14 @@ function itemNotesBlock(day) {
     const label = d.url ? `<a href="${esc(safeUrl(d.url))}" target="_blank" rel="noopener">${esc(d.label)}</a>` : esc(d.label);
     return `<li><span class="key">${label}</span>${d.title ? ` <span class="muted">${esc(d.title)}</span>` : ""}<div class="text">${esc(day.notes[k])}</div></li>`;
   }).join("")}</ul>`;
+}
+
+// The Claude Code sessions worked in that day, as the Activity agent recorded them.
+function claudeBlock(day) {
+  const list = day.auto?.sessions ?? [];
+  if (!list.length) return "";
+  return `<h3>Claude sessions that day</h3><ul class="snapshot">${list.map((s) =>
+    `<li><span class="key">${esc(s.folder)}</span> ${esc(s.title)} ${pill("info", `${timeOf(s.first)} – ${timeOf(s.last)} · ${s.prompts} prompt${s.prompts === 1 ? "" : "s"}`)}</li>`).join("")}</ul>`;
 }
 
 function doneBlock(day) {
@@ -91,7 +99,7 @@ async function select(date, { push = true } = {}) {
         <div class="hint">${pill("info", `${n} note${n === 1 ? "" : "s"}`)}${pill("info", `${day.jira.length} Jira`)}
           ${pill("info", `${day.github.mine.length} PRs`)}${pill("info", `${day.github.toReview.length} to review`)}</div>
       </div>
-      <h3>Notes</h3>${notesBlock(day)}${itemNotesBlock(day)}${doneBlock(day)}${snapshotBlock(day)}
+      <h3>Notes</h3>${notesBlock(day)}${itemNotesBlock(day)}${claudeBlock(day)}${doneBlock(day)}${snapshotBlock(day)}
       <p class="muted small">Saved ${day.savedAt ? new Date(day.savedAt).toLocaleString() : "?"} · file <code>${esc(day.date)}.md</code></p>`;
   } catch (e) {
     pane.innerHTML = `<div class="banner bad">${icon("alert")}${esc(e.message)}</div>`;

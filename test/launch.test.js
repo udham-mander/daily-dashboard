@@ -43,7 +43,7 @@ test("launcher validates the folder, runs the terminal and keeps 5 recent folder
   assert.deepEqual(launcher.info().recent.slice(0, 2), [dirs[4], dirs[6]], "relaunching moves a folder to the front, no duplicate");
   assert.equal(calls.length, 8);
 
-  const fails = async (dir, re) => { await assert.rejects(() => launcher.launch(dir), re); };
+  const fails = async (dir, re, opts) => { await assert.rejects(() => launcher.launch(dir, opts), re); };
   await fails("relative/path", /absolute/);
   await fails(path.join(base, "missing"), /not found/);
   await fails(path.join(base, "recent.json"), /not found/, "a file is not a folder");
@@ -51,6 +51,15 @@ test("launcher validates the folder, runs the terminal and keeps 5 recent folder
   await fails(42, /empty/);
   assert.equal(calls.length, 8, "nothing launched for bad input");
   for (const bad of ["relative/path"]) { try { await launcher.launch(bad); } catch (e) { assert.equal(e.status, 400, "client error"); } }
+
+  // Resuming a session: the command gets `--resume <id>`; only a UUID is accepted on the command line.
+  const id = "384BF14A-2cd8-4c55-a22e-465b1c81e0f8";
+  const resumed = await launcher.launch(dirs[1], { resume: id });
+  assert.deepEqual([resumed.dir, resumed.resume], [dirs[1], id]);
+  assert.ok(calls.at(-1).a.some((x) => String(x).includes(`claude --resume ${id}`)), "resumes that session");
+  assert.equal(r.resume, null, "a plain launch reports no session");
+  for (const bad of ["384bf14a; calc", "", 5, "384bf14a-2cd8-4c55-a22e-465b1c81e0f8 --dangerously"]) await fails(dirs[1], /session id/, { resume: bad });
+  assert.equal(calls.length, 9);
 
   const failing = createLauncher({ defaultDir: dirs[0], recentFile: path.join(base, "r2.json"), run: async () => { throw new Error("could not start wt.exe"); } });
   await assert.rejects(() => failing.launch(), /could not start/);

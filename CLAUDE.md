@@ -47,9 +47,17 @@ lib/score.js       weeklyScore (Jira done / PRs merged / PRs reviewed per week),
 lib/dates.js       local-calendar helpers: localDate, addDays, weekStart (Monday), dateOf(iso)
 lib/launch.js      "Launch Claude": terminalCommand() per platform, createLauncher() (validates the
                    folder, spawns detached, keeps ~/.daily-dashboard/recent-dirs.json, 5 entries)
-lib/claude.js      runClaude(prompt, {model, maxBudgetUsd, allowedTools}): headless `claude -p` (stdin prompt)
+lib/claude.js      runClaude(prompt, {model, maxBudgetUsd, allowedTools}): headless `claude -p` (stdin prompt);
+                   spawnEnv() puts the app's own node folder first on PATH (the claude shim lives there)
+lib/sessions.js    Claude Code sessions from ~/.claude (or CLAUDE_CONFIG_DIR; read only): parseLive
+                   (sessions/<pid>.json + a live-process check), sessionsFromHistory (history.jsonl,
+                   per local day), readTitle (transcript tail: custom-title > ai-title, cached per
+                   file), collectSessions(date) → { live, day, errors }, sessionActivity /
+                   sessionDetails (activity lines + prompt material), compactSessions (what a day
+                   stores) / withoutPrompts (what the API sends)
 lib/activity.js    what the user did on a day: activityFromEvents (GitHub event feed, grouped),
-                   activityFromJira (moved/finished/updated), collectActivity (pages the feed)
+                   activityFromJira (moved/finished/updated), collectActivity (pages the feed, adds
+                   the day's Claude sessions)
 lib/details.js     what was done behind the activity: one aliased GraphQL query for the PRs touched
                    (own commits/review comments/comments that day; the PR description labelled
                    "Background" unless it is the user's own PR opened that day) + commits per
@@ -86,7 +94,7 @@ test/              node:test suites
 | Endpoint | Notes |
 |---|---|
 | `GET /api/ping` | must return `{"app":"daily-dashboard"}` — single-instance detection and `dd.js` rely on it |
-| `GET /api/data` | read-only: `github{login,mine[],toReview[],closed[],reviewed[]}`, `githubError`, `githubFetchedAt`, `jira[]` (open), `jiraDone[]`, `jiraStatus{running,error,fetchedAt,source}`, `score{since,weeks[{start,end,jiraDone,prsMerged,prsReviewed,total}],totals}` (current week first), `progressDir`, `today`, `todayNotes`, `todayEntries`, `previous{date,notes,entries}` |
+| `GET /api/data` | read-only: `github{login,mine[],toReview[],closed[],reviewed[]}`, `githubError`, `githubFetchedAt`, `jira[]` (open), `jiraDone[]`, `jiraStatus{running,error,fetchedAt,source}`, `score{since,weeks[{start,end,jiraDone,prsMerged,prsReviewed,total}],totals}` (current week first), `progressDir`, `today`, `todayNotes`, `todayEntries`, `previous{date,notes,entries}`, `sessions{live[{id,pid,dir,folder,status,startedAt,lastActivityAt,name,title}],today[{id,title,dir,folder,startedOn,first,last,prompts,live}],errors[]}` (Claude Code sessions running now / worked in today, most recent first; never the prompts; `null` when no collector is injected) |
 | `POST /api/refresh` | starts a Jira refresh (runs Claude), refetches GitHub, returns the same payload as `/api/data`. POST because it costs money |
 | `GET /api/status` | `{ jiraStatus, autoStatus }` — cheap (no GitHub refresh); `dd.js` reads the agent's switch and blacklist from here |
 | `GET /api/history?days=N` | `{ progressDir, days: [{ date, savedAt, notes, entries, counts{jira,myPRs,toReview,done} }] }` (N ≤ 366) |
@@ -98,7 +106,7 @@ test/              node:test suites
 | `POST /api/agent` `{enabled}` | the Activity agent switch: starts/stops the scheduler at runtime and writes `auto.enabled` to the config file (`saveSetting`). Returns `{ autoStatus }`; 400 unless a boolean, 404 when the feature is off |
 | `POST /api/blacklist/add` `{text}` | crosses a nudge off the agent's take: the items it names (Jira keys, `repo#n`) or, naming none, its wording go on the blacklist, and today's `auto.nudges` loses everything the blacklist now covers. Returns `{ entry{id,refs,text,date,points[{index,text}],at}, added, auto, autoStatus }` (`added` false = an entry already covered it; `points` = what it took out of today's take, the clicked nudge and any sibling naming the same item); 400 unless a non-empty string ≤ 300 chars, 404 when the agent is off or no blacklist is wired |
 | `POST /api/blacklist/remove` `{id}` or `{text}` | takes entries off the blacklist: the one with `id`, or every one covering `text` (an item such as `dbms#11` in any spelling, or a wording — matched by the app). The points an entry took out of today's take go back to their places (newest cross-off first, so stacked undos line up). Returns `{ entry, removed, auto, autoStatus }`; 400 when nothing matched or neither field is a string |
-| `POST /api/launch` `{dir?}` | opens a new terminal running Claude in `dir` (absolute, must exist) or in `claude.defaultDir`; returns `{ ok, dir, defaultDir, command, recent[] }`. 400 for a bad folder, 404 when no launcher is injected. `/api/data` carries the same `claude{defaultDir,command,recent}` |
+| `POST /api/launch` `{dir?, resume?}` | opens a new terminal running Claude in `dir` (absolute, must exist) or in `claude.defaultDir`; with `resume` (a session id — a UUID, nothing else) the terminal runs `<claude.command> --resume <id>` there instead. Returns `{ ok, dir, resume, defaultDir, command, recent[] }`. 400 for a bad folder or id, 404 when no launcher is injected. `/api/data` carries the same `claude{defaultDir,command,recent}` |
 | `POST /api/quit` | stops the app ~200 ms after replying |
 
 `/api/data` also returns `todayEntries`, `todayAuto`,
@@ -108,8 +116,10 @@ test/              node:test suites
 
 A day has three kinds of notes: **entries** (the "Today's notes" log, appended, each with an id and
 time), **notes** (one per item) and **auto** (`{ updatedAt, source: "claude"|"activity", points[],
-nudges[], activity[], errors[], eodSavedAt, catchupAt }`, written only by the app — never merged
-into entries/notes; `nudges` = the agent's take, today only; `eodSavedAt` = the end-of-day save
+nudges[], activity[], sessions[], errors[], eodSavedAt, catchupAt }`, written only by the app — never merged
+into entries/notes; `nudges` = the agent's take, today only; `sessions` = the Claude Code sessions
+worked in that day, `{ id, title, dir, folder, startedOn, first, last, prompts }` each (no prompt
+text, no live state); `eodSavedAt` = the end-of-day save
 ran, `catchupAt` = the next-day top-up ran). `autoStatus` also carries `nudges` (on/off). Note keys:
 `summary` (legacy daily summary, still accepted), `jira:<KEY>`, `pr:<owner/repo>#<n>`, `review:<owner/repo>#<n>`.
 Changing a field, key format or endpoint means updating `dd.js` and `SKILL.md` in udham-swe too.
@@ -167,11 +177,31 @@ Changing a field, key format or endpoint means updating `dd.js` and `SKILL.md` i
   every minute. When GitHub fails (or the ~300-event feed no longer reaches the day) an existing
   richer record is kept rather than overwritten. `auto.useClaude` defaults to
   `jira.mode === "claude"`, so token-mode installs never spawn `claude`.
+- **Claude sessions** come from Claude Code's own files (`~/.claude`, or `CLAUDE_CONFIG_DIR`),
+  read and never written: `sessions/<pid>.json` (running sessions), `history.jsonl` (one line per
+  prompt) and the last 512 KB of a transcript (its title). A session counts as running only if
+  its pid exists *and* names a claude/node process (one `tasklist`/`ps` listing per minute,
+  cached): a crashed session or a closed terminal leaves its registry file behind and the OS
+  reuses pids. Headless `claude -p` runs register too while they run, with entrypoint `sdk-cli`
+  (the app's own Jira refresh and summary calls among them): those are skipped. The prompts of the day's sessions go into the summary prompt as data (first two
+  and last six per session, 140 chars each); the stored day (`compactSessions`) and the API
+  (`withoutPrompts`) never carry prompt text, and the stored day keeps no live state either
+  (it is about now). Titles and folders are rendered through `esc()`. The keep-the-richer-record
+  guard in `auto.js` counts GitHub/Jira items only: sessions are found from local files even when
+  GitHub is down and must not make a GitHub-less rebuild look richer. `collectSessions` is
+  injected (`app.js`); without it the feature is off and tests never read the real `~/.claude`.
 - **Launching Claude** spawns a terminal: the folder must be absolute and an existing directory,
   and may not contain shell/cmd metacharacters (`" & | < > ^ % ! \` $ ;` or control chars) — it is
   refused, not escaped. The process is spawned with an argument array (no `shell: true`); on
   Windows that is `wt.exe -d <dir> powershell.exe -NoExit -Command <claude.command>`.
-  `claude.command` comes from the user's own config only, never from a request.
+  `claude.command` comes from the user's own config only, never from a request. A **resume**
+  adds ` --resume <id>` to that command: the id must match `SESSION_ID_RE` (a UUID) or the
+  request is refused with 400.
+- **Headless `claude`** is resolved through PATH (cmd.exe on Windows). The desktop launcher
+  starts the app with the machine's PATH, which may lack the folder `claude` was installed in,
+  so `spawnEnv()` puts the folder of the app's own node first (npm puts the `claude` shim next
+  to `node.exe`). Without that, every Jira refresh and summary failed with "'claude' is not
+  recognized" whenever the app was started from the icon.
 - 500 responses say only "internal error"; details go to the log, which strips control characters.
 - `test/server.test.js` and `test/config.test.js` cover these — keep them passing.
 

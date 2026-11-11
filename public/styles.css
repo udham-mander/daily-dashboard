@@ -130,7 +130,7 @@ select { cursor: pointer; }
 /* ---------- Layout ---------- */
 main { max-width: 1120px; margin: 0 auto; padding: 22px 28px 48px; }
 
-.tiles { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
+.tiles { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
 @media (max-width: 1000px) { .tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 .tile {
   text-align: left; cursor: pointer; font: inherit; color: inherit;
@@ -290,6 +290,10 @@ svg.auto-ico { width: 15px; height: 15px; color: var(--accent); opacity: .75; }
 .score .range { color: var(--muted); font-weight: 400; font-size: 12px; margin-left: 6px; }
 .done-list .item { padding: 8px 0; }
 .done-list .row .title { min-width: 160px; }
+
+/* ---------- Claude sessions ---------- */
+.row .key svg.i { vertical-align: -3px; margin-right: 4px; color: var(--muted); }
+.row .resume { margin-left: auto; align-self: center; }
 
 /* ---------- History page ---------- */
 main.history { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 18px; align-items: start; }

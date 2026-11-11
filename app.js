@@ -12,6 +12,7 @@ import { collectGithub, fetchEvents } from "./lib/github.js";
 import { createJiraSource } from "./lib/jira.js";
 import { createLauncher } from "./lib/launch.js";
 import { createServer } from "./lib/server.js";
+import { collectSessions } from "./lib/sessions.js";
 
 let cfg;
 try { cfg = loadConfig(); }
@@ -56,11 +57,12 @@ let server;
 const auto = createAutoNotes({
   cfg: cfg.auto, progressDir: cfg.progressDir, jira, fetchEvents, log, site: cfg.jira.site, scoreWeeks: cfg.scoreWeeks,
   blacklist: createBlacklist(path.join(APP_DIR, "blacklist.json")),   // what the user crossed off the agent's take
+  sessions: collectSessions,                                            // the Claude Code sessions worked in that day
   data: () => server.finished(),
   refreshGithub: (force) => server.refreshGithub(force),
 });
 server = createServer({
-  cfg, collectGithub, jira, launcher, auto, log,
+  cfg, collectGithub, jira, launcher, auto, log, sessions: collectSessions,
   publicDir: path.join(import.meta.dirname, "public"),
   onQuit: () => shutdown("quit from page/API"),
 });

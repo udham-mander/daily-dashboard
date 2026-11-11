@@ -10,7 +10,8 @@ import { createServer } from "../lib/server.js";
 
 let server, port, dir, quit = false, agentOn = true;
 const black = [];
-const launched = [], autoCalls = [], saved = [];
+const launched = [], launchedArgs = [], autoCalls = [], saved = [];
+const SESSION = "384bf14a-2cd8-4c55-a22e-465b1c81e0f8";
 
 // Raw requests so tests can set Host/Origin freely (fetch won't let us forge Host).
 function request(method, pathname, { headers = {}, body } = {}) {
@@ -44,7 +45,13 @@ before(async () => {
     collectGithub: async (opts) => { githubArgs = opts; return { login: "me", mine: [], toReview: [],
       closed: [{ repo: "o/r", number: 1, title: "M", url: "https://github.com/o/r/pull/1", merged: true, closedAt: new Date().toISOString() }],
       reviewed: [] }; },
-    launcher: createLauncher({ defaultDir: dir, recentFile: path.join(dir, "recent.json"), run: async (_f, _a, cwd) => { launched.push(cwd); } }),
+    launcher: createLauncher({ defaultDir: dir, recentFile: path.join(dir, "recent.json"), run: async (_f, a, cwd) => { launched.push(cwd); launchedArgs.push(a); } }),
+    sessions: (date) => ({   // a stand-in for collectSessions(): one session, running and worked in today
+      live: [{ id: SESSION, pid: 1, dir, folder: path.basename(dir), status: "busy", startedAt: "2026-11-12T08:00:00.000Z", lastActivityAt: "2026-11-12T09:00:00.000Z", name: "x-1", title: "Perf report" }],
+      day: [{ id: SESSION, title: "Perf report", dir, folder: path.basename(dir), startedOn: date, first: "2026-11-12T08:00:00.000Z", last: "2026-11-12T09:00:00.000Z", prompts: 3,
+        texts: ["a prompt that must stay inside the app"], live: { pid: 1, status: "busy", startedAt: "2026-11-12T08:00:00.000Z", lastActivityAt: "2026-11-12T09:00:00.000Z" } }],
+      errors: [],
+    }),
     auto: {   // a stand-in for createAutoNotes(): records calls, answers like the real one
       update: async (date, opts) => { autoCalls.push([date, opts]); return { auto: { updatedAt: new Date().toISOString(), source: "activity", points: ["did a thing"], errors: [] } }; },
       status() { return { enabled: agentOn, running: false, intervalMinutes: 120, workHours: "07:00-20:00", useClaude: true, blacklist: black }; },
@@ -98,6 +105,21 @@ test("POST /api/launch opens Claude in the default or a given folder and reports
 
   const data = JSON.parse((await request("GET", "/api/data")).body);
   assert.deepEqual(data.claude, { defaultDir: dir, command: "claude", recent: [sub] });
+
+  // Claude sessions: running now and worked in today, without the prompts themselves.
+  assert.deepEqual(data.sessions.live.map((s) => [s.id, s.status, s.title]), [[SESSION, "busy", "Perf report"]]);
+  assert.deepEqual(data.sessions.today.map((s) => [s.id, s.prompts, s.live.status, s.texts]), [[SESSION, 3, "busy", undefined]], "no prompt text leaves the app");
+  assert.deepEqual(data.sessions.errors, []);
+  // Resume: the terminal runs `<command> --resume <id>` in that folder; anything but a UUID is refused.
+  const r3 = JSON.parse((await write("/api/launch", { dir: sub, resume: SESSION })).body);
+  assert.deepEqual([r3.ok, r3.dir, r3.resume], [true, sub, SESSION]);
+  assert.ok(launchedArgs.at(-1).some((a) => String(a).includes(`claude --resume ${SESSION}`)), "resumes that session");
+  for (const bad of ["384bf14a; calc", "", 7]) {
+    const res = await write("/api/launch", { dir: sub, resume: bad });
+    assert.equal(res.status, 400, String(bad));
+    assert.match(JSON.parse(res.body).error, /session id/);
+  }
+  assert.equal(launched.length, 3, "nothing launched for a bad id");
 });
 
 test("POST /api/auto rebuilds the automatic points (today or a given day); /api/data reports the status", async () => {

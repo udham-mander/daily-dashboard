@@ -40,13 +40,13 @@ and a place to keep **daily notes** — saved as Markdown in a folder you choose
   (or lists the plain activity with `auto.useClaude: false`). They appear in the same list as your
   notes, marked with a small robot icon instead of a time, and are never edited by you or mixed
   into your own entries (`dd.js auto` rebuilds them on demand)
-- **Activity agent** — the automatic side of the app has its own card under the tiles with an
-  **On/Off switch** (on by default, remembered in the config). While on, it writes the automatic
-  points, saves the day at 17:00, tops up yesterday, and gives its **take**: it looks at everything
-  that is open (reviews others wait on, your blocked PRs, Jira in progress for weeks, how the week
-  compares) and lists up to five things it thinks deserve your attention today, most important
-  first, with the keys and PRs linked. Shown as the app's judgement (`auto.nudges: false` keeps
-  the points but drops the take)
+- **Activity agent** — the automatic side of the app, with an **On/Off switch** in the Today's
+  notes header (on by default, remembered in the config). While on, it writes the automatic
+  points, saves the day at 17:00, tops up yesterday, and gives its **take** in a card under the
+  tiles: it looks at everything that is open (reviews others wait on, your blocked PRs, Jira in
+  progress for weeks, how the week compares) and lists up to five things it thinks deserve your
+  attention today, most important first, with the keys and PRs linked. Shown as the app's
+  judgement (`auto.nudges: false` keeps the points but drops the take)
 - **Saves itself at 5 pm** — at `auto.saveAt` the app refreshes GitHub and Jira and writes the day's
   file with fresh data, whether or not you pressed anything. When you start it the next morning
   (or it runs past midnight) it tops up **yesterday's** automatic points with whatever came after
@@ -91,7 +91,7 @@ and start the app again (until then the page shows a reminder and GitHub data on
 | Refresh | **↻ Refresh** or <kbd>R</kbd>. GitHub is instant; Jira takes ~20 s and fills in when ready |
 | Log a note | **Add** in the Today's notes header (or <kbd>N</kbd>), type, then **Add** / <kbd>Ctrl</kbd>+<kbd>Enter</kbd> — saved immediately; <kbd>Esc</kbd> closes the box |
 | Automatic points | Appear in the same list on their own every 2 h, marked with a robot icon; rebuild with `dd.js auto` if needed |
-| Activity agent on/off | The switch on the **Activity agent** card (or `dd.js agent on\|off`); off = nothing is written or saved on its own |
+| Activity agent on/off | The **Activity agent** switch in the Today's notes header (or `dd.js agent on\|off`); off = nothing is written or saved on its own |
 | Save notes on items | **Save notes** or <kbd>Ctrl</kbd>+<kbd>S</kbd>. Unsaved item notes are kept in the browser until you save |
 | Start a Claude session | **Launch Claude** or <kbd>L</kbd> opens a new terminal running `claude` in your default folder; the **▾** caret lists recent folders and takes any other path |
 | See previous days | **History** in the header or <kbd>H</kbd>; <kbd>Esc</kbd> goes back |

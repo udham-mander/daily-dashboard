@@ -6,7 +6,7 @@ import { test } from "node:test";
 import { DEFAULTS, loadConfig, merge, saveSetting, validateConfig } from "../lib/config.js";
 
 const tmpFile = (content) => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dd-config-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mwa-config-"));
   const file = path.join(dir, "config.json");
   if (content !== undefined) fs.writeFileSync(file, content);
   return file;
@@ -109,7 +109,7 @@ test("loadConfig creates defaults, applies the file and env overrides, and valid
   assert.ok(fs.existsSync(fresh), "defaults written");
 
   const custom = tmpFile(JSON.stringify({ port: 4400, progressDir: "~/notes", jira: { refreshMinutes: 0 }, claude: { defaultDir: "~/work" } }));
-  const c2 = loadConfig({ env: { DAILY_DASHBOARD_PORT: "4555" }, file: custom });
+  const c2 = loadConfig({ env: { MY_WORKDAY_ASSISTANT_PORT: "4555" }, file: custom });
   assert.equal(c2.port, 4555, "env wins over file");
   assert.equal(c2.jira.refreshMinutes, 0);
   assert.ok(path.isAbsolute(c2.progressDir) && !c2.progressDir.startsWith("~"), "~ expanded");
@@ -118,5 +118,5 @@ test("loadConfig creates defaults, applies the file and env overrides, and valid
 
   assert.throws(() => loadConfig({ env: {}, file: tmpFile("{ not json") }), /not valid JSON/);
   assert.throws(() => loadConfig({ env: {}, file: tmpFile("[]") }), /JSON object/);
-  assert.throws(() => loadConfig({ env: { DAILY_DASHBOARD_PORT: "abc" }, file: tmpFile() }), /"port"/);
+  assert.throws(() => loadConfig({ env: { MY_WORKDAY_ASSISTANT_PORT: "abc" }, file: tmpFile() }), /"port"/);
 });

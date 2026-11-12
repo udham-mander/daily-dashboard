@@ -21,7 +21,7 @@ function renderList() {
   }).join("") : `<li class="empty">${q ? "No days match your search." : "Nothing saved yet."}</li>`;
 }
 
-// One list like the dashboard's: the user's entries with their time, the automatic points
+// One list like the main page's: the user's entries with their time, the automatic points
 // (GitHub/Jira/Claude Code activity) with a small icon, newest first.
 function notesBlock(day) {
   const entries = day.entries ?? [];
@@ -136,7 +136,7 @@ document.addEventListener("keydown", (e) => {
     const first = DAYS.find((d) => d.date === wanted)?.date ?? DAYS[0]?.date;
     renderList();
     if (first) select(first, { push: false });
-    else $("day").innerHTML = '<p class="empty">No saved days yet. Notes you add on the dashboard appear here.</p>';
+    else $("day").innerHTML = '<p class="empty">No saved days yet. Notes you add on the main page appear here.</p>';
   } catch (e) {
     toast(`Could not load history: ${e.message}`, "alert");
   }

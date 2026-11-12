@@ -49,7 +49,7 @@ test("parses claude -p JSON output: {open, done} object, legacy array, with or w
 });
 
 test("a fetcher may return {open, done}; done issues are cached and reloaded too", async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dd-jira-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mwa-jira-"));
   const cache = path.join(dir, "cache.json");
   const done = { ...compact, key: "PROJ-2", status: "Done", statusCategory: "Done" };
   const src = createJiraSource({ site: "s", mode: "claude" }, cache, async () => ({ open: [compact], done: [done] }));
@@ -63,7 +63,7 @@ test("a fetcher may return {open, done}; done issues are cached and reloaded too
 });
 
 test("source caches good results and keeps them when a refresh fails", async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dd-jira-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mwa-jira-"));
   const cache = path.join(dir, "cache.json");
   let fail = false;
   const src = createJiraSource({ site: "s", mode: "claude" }, cache, async () => {
@@ -86,7 +86,7 @@ test("source caches good results and keeps them when a refresh fails", async () 
 });
 
 test("loadCache re-validates the file and rebuilds URLs; a tampered cache is ignored", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dd-jira-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mwa-jira-"));
   const cache = path.join(dir, "cache.json");
 
   fs.writeFileSync(cache, JSON.stringify({ issues: [{ ...compact, url: "javascript:alert(1)" }], fetchedAt: "2026-11-11T00:00:00Z" }));
@@ -104,7 +104,7 @@ test("loadCache re-validates the file and rebuilds URLs; a tampered cache is ign
 
 test("an empty jira.site reports how to set it up and never runs a fetch", async () => {
   let fetched = 0;
-  const src = createJiraSource({ site: "", mode: "claude" }, path.join(os.tmpdir(), "dd-unused-cache.json"), async () => { fetched++; return []; });
+  const src = createJiraSource({ site: "", mode: "claude" }, path.join(os.tmpdir(), "mwa-unused-cache.json"), async () => { fetched++; return []; });
   await src.refresh();
   assert.equal(fetched, 0);
   assert.match(src.state.error, /not set up yet/);

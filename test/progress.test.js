@@ -8,7 +8,7 @@ import { addEntry, cleanNotes, dayExists, history, loadProgress, mergeNotes, rea
 const github = { mine: [{ repo: "o/r", number: 8, title: "T", url: "u", pending: [{ level: "info", text: "Draft" }] }], toReview: [] };
 const jira = [{ key: "PROJ-1", summary: "S", url: "j", status: "Open", statusCategory: "To Do" }];
 let dir;
-beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), "dd-progress-")); });
+beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), "mwa-progress-")); });
 afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
 
 test("cleanNotes drops unknown keys and non-strings", () => {

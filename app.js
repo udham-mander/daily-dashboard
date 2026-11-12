@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Daily Dashboard — entry point. Starts the local server (127.0.0.1 only), keeps a single
+// My workday assistant — entry point. Starts the local server (127.0.0.1 only), keeps a single
 // instance, schedules Jira refreshes and opens the browser.
 //   node app.js [--no-open]
 import { spawn } from "node:child_process";
@@ -16,7 +16,7 @@ import { collectSessions } from "./lib/sessions.js";
 
 let cfg;
 try { cfg = loadConfig(); }
-catch (e) { console.error(`Daily Dashboard cannot start: ${e.message}`); process.exit(1); }
+catch (e) { console.error(`My workday assistant cannot start: ${e.message}`); process.exit(1); }
 const ORIGIN = `http://127.0.0.1:${cfg.port}`;
 const LOG_FILE = path.join(APP_DIR, "app.log");
 const LOG_MAX_BYTES = 1_000_000;
@@ -72,7 +72,7 @@ server.on("error", async (e) => {
   if (e.code !== "EADDRINUSE") { log(`server: ${e.message}`); process.exit(1); }
   try {
     const res = await fetch(`${ORIGIN}/api/ping`, { signal: AbortSignal.timeout(3000) });
-    if ((await res.json()).app === "daily-dashboard") { openBrowser(); process.exit(0); }
+    if ((await res.json()).app === "my-workday-assistant") { openBrowser(); process.exit(0); }
   } catch {}
   const msg = `port ${cfg.port} is in use by another program; set "port" in ${CONFIG_FILE}`;
   log(msg); console.error(msg);
@@ -81,7 +81,7 @@ server.on("error", async (e) => {
 
 server.listen(cfg.port, "127.0.0.1", () => {
   log(`started on ${ORIGIN} (jira via ${cfg.jira.mode}, saving to ${cfg.progressDir})`);
-  console.log(`Daily Dashboard running at ${ORIGIN}/ — stop with Ctrl+C or the Quit button`);
+  console.log(`My workday assistant running at ${ORIGIN}/ — stop with Ctrl+C or the Quit button`);
   jira.loadCache();
   // First data, then the scheduler: its first tick may build today's automatic notes.
   Promise.allSettled([refreshJira(), server.refreshGithub(true)]).then(() => auto.start());

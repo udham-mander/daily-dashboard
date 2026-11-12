@@ -1,4 +1,4 @@
-# Daily Dashboard
+# My workday assistant
 
 Your workday on one local page: open **Jira** issues and how long they've been in progress,
 your **pull requests** and what each is still waiting on, the **PRs waiting for your review**,
@@ -7,7 +7,7 @@ writes from what you actually did, with its take on what deserves attention toda
 is saved as Markdown in a folder you choose.
 
 ```
-┌ Daily activity dashboard ───── History  Auto ▾  [Launch Claude ▾]  ↻ Refresh  [Save notes]  ⏻ Quit ┐
+┌ My workday assistant ───────── History  Auto ▾  [Launch Claude ▾]  ↻ Refresh  [Save notes]  ⏻ Quit ┐
 │ ┌ JIRA IN PROGRESS ┐ ┌ MY PULL REQUESTS ┐ ┌ NEEDS MY REVIEW ┐ ┌ TODAY'S NOTES ┐ ┌ THIS WEEK ┐      │
 │ │ 5                │ │ 1                │ │ 24              │ │ 6             │ │ 3         │      │
 │ │ 5 for 14+ days   │ │ draft in progress│ │ oldest 43 days  │ │ 4 by the agent│ │ 1 · 1 · 1 │      │
@@ -52,7 +52,7 @@ is saved as Markdown in a folder you choose.
   you gave Claude Code that day, and (via Claude's Atlassian connector) the Jira issues you
   touched, then asks Claude to write the log
   (`auto.useClaude: false` lists the plain activity instead). The points are never mixed into
-  your own entries; `dd.js auto` rebuilds them on demand
+  your own entries; `mwa.js auto` rebuilds them on demand
 - **Agent's take** — a card under the tiles where the agent gives its judgement: it looks at
   everything that is open (reviews others wait on, your blocked PRs, Jira in progress for weeks,
   how the week compares) and lists up to five things it thinks deserve your attention today,
@@ -72,7 +72,7 @@ is saved as Markdown in a folder you choose.
 - Everything is written to `YYYY-MM-DD.md` (readable) and `YYYY-MM-DD.json` in your progress folder
 - Overview tiles, collapsible sections (closed on load), 8 themes (Auto, Light, Dark, Nord,
   Dracula, Solarized Light, Sepia, High contrast), keyboard shortcuts
-- **Works with Claude**: the `udham-swe:daily-dashboard` skill starts the app, reads it, adds
+- **Works with Claude**: the `udham-swe:my-workday-assistant` skill starts the app, reads it, adds
   notes and acts on items (see [Using it from Claude](#using-it-from-claude))
 
 ## Requirements
@@ -86,13 +86,13 @@ is saved as Markdown in a folder you choose.
 ## Install
 
 ```powershell
-git clone https://github.com/udham-mander/daily-dashboard.git C:\Workspace\github\daily-dashboard
-cd C:\Workspace\github\daily-dashboard
+git clone https://github.com/udham-mander/my-workday-assistant.git C:\Workspace\github\my-workday-assistant
+cd C:\Workspace\github\my-workday-assistant
 npm run install-shortcut
 ```
 
-You get a **Daily Dashboard** icon on the desktop. Start it once, then tell it your Jira site:
-open `~/.daily-dashboard/config.json`, set `"jira": { "site": "your-company.atlassian.net" }`
+You get a **My workday assistant** icon on the desktop. Start it once, then tell it your Jira site:
+open `~/.my-workday-assistant/config.json`, set `"jira": { "site": "your-company.atlassian.net" }`
 and start the app again (until then the page shows a reminder and GitHub data only).
 
 ## Use
@@ -104,8 +104,8 @@ and start the app again (until then the page shows a reminder and GitHub data on
 | Run in a terminal | `npm start` (or `node app.js --no-open`); logs stay in the terminal |
 | Refresh | **↻ Refresh** or <kbd>R</kbd>. GitHub is instant; Jira takes ~20 s and fills in when ready |
 | Log a note | **Add** in the Today's notes header (or <kbd>N</kbd>), type, then **Add** / <kbd>Ctrl</kbd>+<kbd>Enter</kbd> — saved immediately; <kbd>Esc</kbd> closes the box |
-| Activity agent | The **Activity agent** switch in the Today's notes header (or `dd.js agent on\|off`). On: automatic points appear in the same list every 2 h (robot icon; `dd.js auto` rebuilds them), the take is shown, the day is saved at 17:00. Off: nothing is written or saved on its own |
-| Agent's take | **×** on a point crosses it off and blacklists what it names; **n blacklisted** in the card opens the list and puts one back (or `dd.js blacklist`) |
+| Activity agent | The **Activity agent** switch in the Today's notes header (or `mwa.js agent on\|off`). On: automatic points appear in the same list every 2 h (robot icon; `mwa.js auto` rebuilds them), the take is shown, the day is saved at 17:00. Off: nothing is written or saved on its own |
+| Agent's take | **×** on a point crosses it off and blacklists what it names; **n blacklisted** in the card opens the list and puts one back (or `mwa.js blacklist`) |
 | Save notes on items | **Save notes** or <kbd>Ctrl</kbd>+<kbd>S</kbd>. Unsaved item notes are kept in the browser until you save |
 | Start a Claude session | **Launch Claude** or <kbd>L</kbd> opens a new terminal running `claude` in your default folder; the **▾** caret lists recent folders and takes any other path |
 | Resume a Claude session | **Resume** in the Claude sessions section opens a terminal running `claude --resume <id>` in that session's folder (closed sessions only; running ones show busy or idle) |
@@ -148,7 +148,7 @@ ready, Jira comments or transitions).
 
 ## Configuration
 
-`~/.daily-dashboard/config.json` is created on first start. Restart the app after editing it.
+`~/.my-workday-assistant/config.json` is created on first start. Restart the app after editing it.
 
 | Setting | Default | Meaning |
 |---|---|---|
@@ -192,14 +192,14 @@ shown instead, with a note. Nothing is written on a day with no activity, and yo
 are never edited. The day's file keeps each Claude session's title, folder, times and prompt
 count — never the prompts themselves.
 
-What you cross off the take is kept in `~/.daily-dashboard/blacklist.json` (the items a point
+What you cross off the take is kept in `~/.my-workday-assistant/blacklist.json` (the items a point
 named — Jira keys, `repo#n` — or its wording when it named none). Later takes leave those out:
 the prompt lists them, and the app filters whatever still comes back. Put one back from the card,
-with `dd.js blacklist remove <id or item>`, or by deleting its line in that file.
+with `mwa.js blacklist remove <id or item>`, or by deleting its line in that file.
 
 **Launch Claude** opens a new Windows Terminal tab (or a console window) running PowerShell with
 that command, in the chosen folder; on macOS it uses Terminal.app, on Linux the first terminal
-emulator found. Recent folders are kept in `~/.daily-dashboard/recent-dirs.json`.
+emulator found. Recent folders are kept in `~/.my-workday-assistant/recent-dirs.json`.
 
 ### Jira source
 
@@ -215,7 +215,7 @@ emulator found. Recent folders are kept in `~/.daily-dashboard/recent-dirs.json`
 
 Everything stays on your machine: the app listens on `127.0.0.1` only, talks to GitHub through
 your `gh` login and to Jira through Claude Code or your token, and writes only to your progress
-folder and `~/.daily-dashboard`. It reads Claude Code's own records under `~/.claude` (session
+folder and `~/.my-workday-assistant`. It reads Claude Code's own records under `~/.claude` (session
 registry, prompt history, the end of transcripts for titles) and never writes there; the prompts
 of the day's sessions reach only the headless Claude call that writes the automatic points. Its
 API refuses requests from other websites (Host and Origin checks) and the page runs under a
@@ -225,7 +225,7 @@ strict Content-Security-Policy.
 
 | Problem | Fix |
 |---|---|
-| Icon does nothing | Check `~/.daily-dashboard/app.log`; run `npm start` in a terminal to see errors |
+| Icon does nothing | Check `~/.my-workday-assistant/app.log`; run `npm start` in a terminal to see errors |
 | "port 4317 is in use" | Set another `port` in the config |
 | GitHub error banner | `gh auth status` / `gh auth login` |
 | Jira error banner | Make sure `claude` works and the Atlassian connector is connected, or switch to token mode |

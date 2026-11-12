@@ -27,10 +27,10 @@ function request(method, pathname, { headers = {}, body } = {}) {
   });
 }
 const write = (pathname, body, extra = {}) =>
-  request("POST", pathname, { body, headers: { "content-type": "application/json", "x-dd": "1", origin: `http://127.0.0.1:${port}`, ...extra } });
+  request("POST", pathname, { body, headers: { "content-type": "application/json", "x-mwa": "1", origin: `http://127.0.0.1:${port}`, ...extra } });
 
 before(async () => {
-  dir = fs.mkdtempSync(path.join(os.tmpdir(), "dd-server-"));
+  dir = fs.mkdtempSync(path.join(os.tmpdir(), "mwa-server-"));
   // Find a free port first: the server's allowed Host/Origin depend on it.
   port = await new Promise((r) => { const s = http.createServer().listen(0, "127.0.0.1", () => { const p = s.address().port; s.close(() => r(p)); }); });
   const cfg = { port, progressDir: path.join(dir, "progress"), githubCacheSeconds: 60, scoreWeeks: 4 };
@@ -100,7 +100,7 @@ test("POST /api/launch opens Claude in the default or a given folder and reports
     assert.match(JSON.parse(res.body).error, re);
   }
   assert.equal(launched.length, 2, "nothing launched for bad folders");
-  assert.equal((await request("POST", "/api/launch", { body: {} })).status, 403, "writes need x-dd + origin");
+  assert.equal((await request("POST", "/api/launch", { body: {} })).status, 403, "writes need x-mwa + origin");
   assert.equal((await request("GET", "/api/launch")).status, 404, "never a GET");
 
   const data = JSON.parse((await request("GET", "/api/data")).body);
@@ -130,7 +130,7 @@ test("POST /api/auto rebuilds the automatic points (today or a given day); /api/
   assert.equal((await write("/api/auto", { date: "2026-11-10" })).status, 200);
   assert.equal(autoCalls.at(-1)[0], "2026-11-10");
   assert.equal((await write("/api/auto", { date: "nope" })).status, 400);
-  assert.equal((await request("POST", "/api/auto", { body: {} })).status, 403, "needs x-dd + origin");
+  assert.equal((await request("POST", "/api/auto", { body: {} })).status, 403, "needs x-mwa + origin");
   assert.equal((await request("GET", "/api/auto")).status, 404, "never a GET");
   const data = JSON.parse((await request("GET", "/api/data")).body);
   assert.equal(data.autoStatus.intervalMinutes, 120);
@@ -147,7 +147,7 @@ test("POST /api/agent switches the Activity agent and remembers it in the config
   assert.equal((await write("/api/agent", { enabled: "yes" })).status, 400);
   assert.equal((await write("/api/agent", {})).status, 400);
   assert.equal((await request("GET", "/api/agent")).status, 404, "never a GET");
-  assert.equal((await request("POST", "/api/agent", { body: { enabled: false } })).status, 403, "needs x-dd + origin");
+  assert.equal((await request("POST", "/api/agent", { body: { enabled: false } })).status, 403, "needs x-mwa + origin");
 });
 
 test("POST /api/blacklist/add and /remove: the agent's take can be crossed off and put back", async () => {
@@ -171,7 +171,7 @@ test("POST /api/blacklist/add and /remove: the agent's take can be crossed off a
   assert.equal((await write("/api/blacklist/add", { text: "" })).status, 400);
   assert.equal((await write("/api/blacklist/add", { text: 7 })).status, 400);
   assert.equal((await write("/api/blacklist/add", { text: "x".repeat(301) })).status, 400);
-  assert.equal((await request("POST", "/api/blacklist/add", { body: { text: "x" } })).status, 403, "needs x-dd + origin");
+  assert.equal((await request("POST", "/api/blacklist/add", { body: { text: "x" } })).status, 403, "needs x-mwa + origin");
   assert.equal((await request("GET", "/api/blacklist/add")).status, 404, "never a GET");
 });
 
@@ -210,9 +210,9 @@ test("returns data from the injected sources", async () => {
 
 test("rejects foreign hosts and cross-site writes", async () => {
   assert.equal((await request("GET", "/api/data", { headers: { host: `evil.example:${port}` } })).status, 403);
-  assert.equal((await request("POST", "/api/save", { body: {} })).status, 403, "no x-dd/origin");
+  assert.equal((await request("POST", "/api/save", { body: {} })).status, 403, "no x-mwa/origin");
   assert.equal((await write("/api/save", {}, { origin: "https://evil.example" })).status, 403);
-  assert.equal((await write("/api/save", {}, { "x-dd": "0" })).status, 403);
+  assert.equal((await write("/api/save", {}, { "x-mwa": "0" })).status, 403);
 });
 
 test("rejects cross-site subresource/fetch GETs but allows navigations (Sec-Fetch-*)", async () => {
@@ -224,17 +224,17 @@ test("rejects cross-site subresource/fetch GETs but allows navigations (Sec-Fetc
   assert.equal((await get("/api/data", img)).status, 403, "<img src> on another site");
   assert.equal((await get("/api/data", xhr)).status, 403, "fetch() from another site");
   assert.equal((await get("/api/data", { "sec-fetch-site": "same-site", "sec-fetch-mode": "no-cors", "sec-fetch-dest": "script" })).status, 403);
-  assert.equal((await get("/", nav)).status, 200, "a link to the dashboard from elsewhere");
+  assert.equal((await get("/", nav)).status, 200, "a link to the app from elsewhere");
   assert.equal((await get("/", iframe)).status, 403, "embedding is refused");
   assert.equal((await get("/api/data", { "sec-fetch-site": "same-origin", "sec-fetch-mode": "cors", "sec-fetch-dest": "empty" })).status, 200, "our own page");
   assert.equal((await get("/", { "sec-fetch-site": "none", "sec-fetch-mode": "navigate", "sec-fetch-dest": "document" })).status, 200, "typed URL / desktop icon");
-  assert.equal((await get("/api/data", {})).status, 200, "non-browser client such as dd.js");
+  assert.equal((await get("/api/data", {})).status, 200, "non-browser client such as mwa.js");
 });
 
 test("a refresh (which runs Claude) is POST-only; GET /api/data never triggers it", async () => {
   let refreshes = 0;
   const jiraSpy = { state: { issues: [] }, status: () => ({ running: false }), refresh: () => { refreshes++; return Promise.resolve(); } };
-  const dir2 = fs.mkdtempSync(path.join(os.tmpdir(), "dd-server2-"));
+  const dir2 = fs.mkdtempSync(path.join(os.tmpdir(), "mwa-server2-"));
   const port2 = await new Promise((r) => { const s = http.createServer().listen(0, "127.0.0.1", () => { const p = s.address().port; s.close(() => r(p)); }); });
   const srv = createServer({ cfg: { port: port2, progressDir: dir2, githubCacheSeconds: 60 }, jira: jiraSpy,
     publicDir: path.join(import.meta.dirname, "..", "public"), collectGithub: async () => ({ login: "me", mine: [], toReview: [] }) });
@@ -248,8 +248,8 @@ test("a refresh (which runs Claude) is POST-only; GET /api/data never triggers i
     assert.equal(await req("GET", "/api/data?refresh=1"), 200);
     assert.equal(refreshes, 0, "the old GET trigger is gone");
     assert.equal(await req("GET", "/api/refresh"), 404);
-    assert.equal(await req("POST", "/api/refresh", {}, {}), 403, "needs origin + x-dd");
-    const hdrs = { "x-dd": "1", origin: `http://127.0.0.1:${port2}`, "content-type": "application/json" };
+    assert.equal(await req("POST", "/api/refresh", {}, {}), 403, "needs origin + x-mwa");
+    const hdrs = { "x-mwa": "1", origin: `http://127.0.0.1:${port2}`, "content-type": "application/json" };
     assert.equal(await req("POST", "/api/refresh", hdrs, {}), 200);
     assert.equal(refreshes, 1);
     assert.equal(await req("POST", "/api/launch", hdrs, {}), 404, "no launcher injected = feature off");
@@ -290,7 +290,7 @@ test("entries API: add, list in data, delete; day endpoint", async () => {
   assert.ok(data.todayEntries.some((e) => e.id === added.entry.id));
 
   assert.equal((await write("/api/entries", { text: "  " })).status, 400);
-  assert.equal((await request("POST", "/api/entries", { body: { text: "x" } })).status, 403, "writes need x-dd + origin");
+  assert.equal((await request("POST", "/api/entries", { body: { text: "x" } })).status, 403, "writes need x-mwa + origin");
 
   const day = JSON.parse((await request("GET", `/api/day?date=${data.today}`)).body);
   assert.ok(day.entries.length >= 1);

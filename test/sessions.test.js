@@ -86,7 +86,7 @@ test("titleFromTranscript: the user's own name wins over the generated title; th
 });
 
 test("collectSessions reads the registry, the history and the transcript tails; the day's sessions carry titles and live state", () => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), "dd-claude-"));
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "mwa-claude-"));
   const dir = "C:\\Workspace\\github", slug = path.join(home, "projects", projectSlug(dir));
   fs.mkdirSync(path.join(home, "sessions"), { recursive: true });
   fs.mkdirSync(slug, { recursive: true });
@@ -127,7 +127,7 @@ test("collectSessions reads the registry, the history and the transcript tails; 
   // Yesterday: A only; its live state is about now, so it still shows as running.
   assert.deepEqual(collectSessions("2026-11-11", { home, alive }).day.map((s) => [s.id, s.prompts, s.live?.status]), [[A, 1, "busy"]]);
   // No records at all (a machine without Claude Code): empty, no errors.
-  const empty = fs.mkdtempSync(path.join(os.tmpdir(), "dd-noclaude-"));
+  const empty = fs.mkdtempSync(path.join(os.tmpdir(), "mwa-noclaude-"));
   assert.deepEqual(collectSessions(DAY, { home: empty, alive }), { live: [], day: [], errors: [] });
   fs.rmSync(home, { recursive: true, force: true });
   fs.rmSync(empty, { recursive: true, force: true });

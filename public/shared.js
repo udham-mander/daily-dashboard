@@ -1,4 +1,4 @@
-// Helpers shared by the dashboard (main.js) and the History page (history.js).
+// Helpers shared by the main page (main.js) and the History page (history.js).
 
 export const $ = (id) => document.getElementById(id);
 export const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -79,7 +79,7 @@ export function toast(msg, kind = "check", action = null) {
 /** GET when `body` is undefined, otherwise POST JSON with the header the server requires for writes. */
 export async function api(path, body) {
   const init = body === undefined ? {} : {
-    method: "POST", headers: { "content-type": "application/json", "x-dd": "1" }, body: JSON.stringify(body) };
+    method: "POST", headers: { "content-type": "application/json", "x-mwa": "1" }, body: JSON.stringify(body) };
   const res = await fetch(path, init);
   const json = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`);
@@ -88,12 +88,12 @@ export async function api(path, body) {
 
 /** Wires the theme <select> (the theme itself is applied before paint by theme.js). */
 export function initTheme(select) {
-  select.value = store.get("dd-theme") ?? "auto";
+  select.value = store.get("mwa-theme") ?? "auto";
   select.addEventListener("change", () => {
     const theme = select.value;
     if (theme === "auto") delete document.documentElement.dataset.theme;
     else document.documentElement.dataset.theme = theme;
-    store.set("dd-theme", theme);
+    store.set("mwa-theme", theme);
   });
 }
 

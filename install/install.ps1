@@ -1,13 +1,13 @@
-# Installs Daily Dashboard for the current Windows user:
+# Installs My workday assistant for the current Windows user:
 #   - checks node / gh / claude
-#   - writes %USERPROFILE%\.daily-dashboard\launch.vbs (starts the app with no console window)
-#   - draws %USERPROFILE%\.daily-dashboard\icon.ico
-#   - creates a "Daily Dashboard" shortcut on the desktop
+#   - writes %USERPROFILE%\.my-workday-assistant\launch.vbs (starts the app with no console window)
+#   - draws %USERPROFILE%\.my-workday-assistant\icon.ico
+#   - creates a "My workday assistant" shortcut on the desktop
 # Usage: powershell -ExecutionPolicy Bypass -File install\install.ps1
 $ErrorActionPreference = "Stop"
 
 $repo   = Split-Path -Parent $PSScriptRoot
-$appDir = Join-Path $env:USERPROFILE ".daily-dashboard"
+$appDir = Join-Path $env:USERPROFILE ".my-workday-assistant"
 New-Item -ItemType Directory -Force $appDir | Out-Null
 
 # --- prerequisites ---
@@ -25,7 +25,7 @@ foreach ($tool in "gh", "claude") {
 # --- launcher: wscript runs node hidden; the absolute node path avoids PATH differences ---
 $vbs = Join-Path $appDir "launch.vbs"
 @"
-' Starts Daily Dashboard without a console window (created by install.ps1).
+' Starts My workday assistant without a console window (created by install.ps1).
 ' Extra arguments are passed to app.js, e.g.: wscript launch.vbs --no-open
 Set sh = CreateObject("WScript.Shell")
 sh.CurrentDirectory = "$repo"
@@ -75,7 +75,7 @@ $w.Write($png); $w.Close()
 
 # --- desktop shortcut ---
 $desktop = [Environment]::GetFolderPath("Desktop")
-$lnk = Join-Path $desktop "Daily Dashboard.lnk"
+$lnk = Join-Path $desktop "My workday assistant.lnk"
 $sc = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk)
 $sc.TargetPath = Join-Path $env:WINDIR "System32\wscript.exe"
 $sc.Arguments = "`"$vbs`""

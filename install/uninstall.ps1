@@ -1,7 +1,7 @@
 # Removes the desktop shortcut and launcher, and stops the app if it is running.
-# Keeps your settings (~\.daily-dashboard\config.json) and your progress files.
+# Keeps your settings (~\.my-workday-assistant\config.json) and your progress files.
 # Usage: powershell -ExecutionPolicy Bypass -File install\uninstall.ps1
-$appDir = Join-Path $env:USERPROFILE ".daily-dashboard"
+$appDir = Join-Path $env:USERPROFILE ".my-workday-assistant"
 
 # Stop a running instance through its own API (only it answers /api/ping this way).
 try {
@@ -9,11 +9,11 @@ try {
     $port = if ($cfg.port) { $cfg.port } else { 4317 }
 } catch { $port = 4317 }
 try {
-    Invoke-RestMethod -Method Post "http://127.0.0.1:$port/api/quit" -Headers @{ "x-dd" = "1"; "Origin" = "http://127.0.0.1:$port" } -TimeoutSec 3 | Out-Null
+    Invoke-RestMethod -Method Post "http://127.0.0.1:$port/api/quit" -Headers @{ "x-mwa" = "1"; "Origin" = "http://127.0.0.1:$port" } -TimeoutSec 3 | Out-Null
     Write-Host "Stopped the running app."
 } catch { }
 
-$lnk = Join-Path ([Environment]::GetFolderPath("Desktop")) "Daily Dashboard.lnk"
+$lnk = Join-Path ([Environment]::GetFolderPath("Desktop")) "My workday assistant.lnk"
 foreach ($f in $lnk, (Join-Path $appDir "launch.vbs"), (Join-Path $appDir "icon.ico")) {
     if (Test-Path $f) { Remove-Item $f -Force; Write-Host "Removed $f" }
 }

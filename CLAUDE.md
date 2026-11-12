@@ -4,12 +4,12 @@ Guidance for Claude Code when working in this repository.
 
 ## What this is
 
-Daily Dashboard: a local web app (Node, **no npm dependencies**) showing the user's open Jira
+My workday assistant: a local web app (Node, **no npm dependencies**) showing the user's open Jira
 issues, their GitHub PRs with what each is waiting on, PRs awaiting their review, and daily
 notes saved to a folder. It runs on `127.0.0.1` only and is started from a Windows desktop icon.
 
-A Claude skill drives it over its HTTP API: `udham-swe:daily-dashboard` (repo
-`udham-mander/udham-swe`, files `skills/daily-dashboard/SKILL.md` and `dd.js`).
+A Claude skill drives it over its HTTP API: `udham-swe:my-workday-assistant` (repo
+`udham-mander/udham-swe`, files `skills/my-workday-assistant/SKILL.md` and `mwa.js`).
 **The API is a contract with that skill** — see "API contract" below.
 
 ## Commands
@@ -26,11 +26,11 @@ npm run uninstall-shortcut   # removes them, stops the app, keeps data
 Run a throwaway instance without touching the user's real one or their progress folder:
 
 ```bash
-DAILY_DASHBOARD_PORT=4399 DAILY_DASHBOARD_PROGRESS_DIR=/tmp/dd-test node app.js --no-open
+MY_WORKDAY_ASSISTANT_PORT=4399 MY_WORKDAY_ASSISTANT_PROGRESS_DIR=/tmp/mwa-test node app.js --no-open
 ```
 
 Stop the real instance: the page's Quit button, or `POST /api/quit` (see API), or
-`node <udham-swe>/skills/daily-dashboard/dd.js quit`.
+`node <udham-swe>/skills/my-workday-assistant/mwa.js quit`.
 
 ## Layout
 
@@ -46,7 +46,7 @@ lib/progress.js    saveProgress (merging), loadProgress, history, toMarkdown, me
 lib/score.js       weeklyScore (Jira done / PRs merged / PRs reviewed per week), doneOn(date), scoreSince
 lib/dates.js       local-calendar helpers: localDate, addDays, weekStart (Monday), dateOf(iso)
 lib/launch.js      "Launch Claude": terminalCommand() per platform, createLauncher() (validates the
-                   folder, spawns detached, keeps ~/.daily-dashboard/recent-dirs.json, 5 entries)
+                   folder, spawns detached, keeps ~/.my-workday-assistant/recent-dirs.json, 5 entries)
 lib/claude.js      runClaude(prompt, {model, maxBudgetUsd, allowedTools}): headless `claude -p` (stdin prompt);
                    spawnEnv() puts the app's own node folder first on PATH (the claude shim lives there)
 lib/sessions.js    Claude Code sessions from ~/.claude (or CLAUDE_CONFIG_DIR; read only): parseLive
@@ -66,10 +66,10 @@ lib/auto.js        automatic notes: stateSummary (open work + score as text), su
                    parseAnswer ({points, nudges}), buildAuto (Claude or plain lines), plan() (pure
                    timing rules), createAutoNotes() (update(date), minute tick, status)
 lib/blacklist.js   the agent's blacklist (what the user crossed off the take): refsIn, matches,
-                   filterNudges, createBlacklist() over ~/.daily-dashboard/blacklist.json
-lib/config.js      ~/.daily-dashboard/config.json with DEFAULTS; env overrides
+                   filterNudges, createBlacklist() over ~/.my-workday-assistant/blacklist.json
+lib/config.js      ~/.my-workday-assistant/config.json with DEFAULTS; env overrides
 lib/fsutil.js      writeFileAtomic (temp + rename), readJson
-public/            index.html + main.js (dashboard), history.html + history.js (/history),
+public/            index.html + main.js (main page), history.html + history.js (/history),
                    shared.js (helpers both import), styles.css, theme.js (pre-paint), icon.svg
 install/           install.ps1 / uninstall.ps1 (Windows)
 test/              node:test suites
@@ -89,14 +89,14 @@ test/              node:test suites
 - **File writes** that matter go through `writeFileAtomic`.
 - Keep `README.md` (user-facing) and this file in sync with behavior changes.
 
-## API contract (used by the page and by `dd.js`)
+## API contract (used by the page and by `mwa.js`)
 
 | Endpoint | Notes |
 |---|---|
-| `GET /api/ping` | must return `{"app":"daily-dashboard"}` — single-instance detection and `dd.js` rely on it |
+| `GET /api/ping` | must return `{"app":"my-workday-assistant"}` — single-instance detection and `mwa.js` rely on it |
 | `GET /api/data` | read-only: `github{login,mine[],toReview[],closed[],reviewed[]}`, `githubError`, `githubFetchedAt`, `jira[]` (open), `jiraDone[]`, `jiraStatus{running,error,fetchedAt,source}`, `score{since,weeks[{start,end,jiraDone,prsMerged,prsReviewed,total}],totals}` (current week first), `progressDir`, `today`, `todayNotes`, `todayEntries`, `previous{date,notes,entries}`, `sessions{live[{id,pid,dir,folder,status,startedAt,lastActivityAt,name,title}],today[{id,title,dir,folder,startedOn,first,last,prompts,live}],errors[]}` (Claude Code sessions running now / worked in today, most recent first; never the prompts; `null` when no collector is injected) |
 | `POST /api/refresh` | starts a Jira refresh (runs Claude), refetches GitHub, returns the same payload as `/api/data`. POST because it costs money |
-| `GET /api/status` | `{ jiraStatus, autoStatus }` — cheap (no GitHub refresh); `dd.js` reads the agent's switch and blacklist from here |
+| `GET /api/status` | `{ jiraStatus, autoStatus }` — cheap (no GitHub refresh); `mwa.js` reads the agent's switch and blacklist from here |
 | `GET /api/history?days=N` | `{ progressDir, days: [{ date, savedAt, notes, entries, counts{jira,myPRs,toReview,done} }] }` (N ≤ 366) |
 | `GET /api/day?date=YYYY-MM-DD` | one day in full: `{ date, savedAt, notes, entries, jira, github{login,mine,toReview}, done{jira,prs,reviewed} }` (`done` = finished *that day*); 404 if none, 400 on a bad date |
 | `POST /api/save` `{notes}` | item notes; **merges**: sent keys replace, `""` deletes, unsent keys kept. Returns `{ date, files, notes, entries }` |
@@ -122,7 +122,7 @@ worked in that day, `{ id, title, dir, folder, startedOn, first, last, prompts }
 text, no live state); `eodSavedAt` = the end-of-day save
 ran, `catchupAt` = the next-day top-up ran). `autoStatus` also carries `nudges` (on/off). Note keys:
 `summary` (legacy daily summary, still accepted), `jira:<KEY>`, `pr:<owner/repo>#<n>`, `review:<owner/repo>#<n>`.
-Changing a field, key format or endpoint means updating `dd.js` and `SKILL.md` in udham-swe too.
+Changing a field, key format or endpoint means updating `mwa.js` and `SKILL.md` in udham-swe too.
 
 ## Security model (don't weaken)
 
@@ -131,10 +131,10 @@ Changing a field, key format or endpoint means updating `dd.js` and `SKILL.md` i
   A browser subresource/fetch request (`Sec-Fetch-Site` present and not `same-origin`/`none`)
   is refused unless it is a top-level navigation (`Sec-Fetch-Mode: navigate` +
   `Sec-Fetch-Dest: document`) — so other websites can't `<img>`/`fetch()` the API, but a link
-  to the dashboard from anywhere still opens it. Non-browser clients (`dd.js`, tests) send no
+  to the app from anywhere still opens it. Non-browser clients (`mwa.js`, tests) send no
   `Sec-Fetch-*` headers and pass.
-- Every POST: `x-dd: 1` **and** `Origin` = the app's own origin (cross-site request guard).
-  Clients outside the browser (`dd.js`, tests) set both explicitly.
+- Every POST: `x-mwa: 1` **and** `Origin` = the app's own origin (cross-site request guard).
+  Clients outside the browser (`mwa.js`, tests) set both explicitly.
 - **Anything that costs money or changes state is a POST** (`/api/refresh` runs `claude -p`).
   Never add side effects to a GET.
 - Config values that reach a command line, URL or prompt (`port`, `jira.site`, `jira.claudeModel`,
@@ -247,11 +247,11 @@ Changing a field, key format or endpoint means updating `dd.js` and `SKILL.md` i
 - Folder settings (`progressDir`, `claude.defaultDir`) accept `~`; a relative path is resolved
   from the home folder; validation then requires an absolute path.
 - **Environment inheritance**: the app is often started from inside a Claude Code session (the
-  skill's `dd.js ensure`), whose per-session markers (`CLAUDECODE`, `CLAUDE_CODE_CHILD_SESSION`,
+  skill's `mwa.js ensure`), whose per-session markers (`CLAUDECODE`, `CLAUDE_CODE_CHILD_SESSION`,
   `CLAUDE_CODE_SESSION_ID`, …) would otherwise reach every terminal the app launches and make the
-  new `claude` think it is a child session ("Transcript saving is off"). `dd.js` strips them when
+  new `claude` think it is a child session ("Transcript saving is off"). `mwa.js` strips them when
   starting the app and `spawnDetached` strips them again (`cleanEnv`, `SESSION_MARKERS`);
   user settings like `CLAUDE_CODE_GIT_BASH_PATH` are kept.
-- The launcher `~/.daily-dashboard/launch.vbs` hard-codes this repo's path and the node path;
+- The launcher `~/.my-workday-assistant/launch.vbs` hard-codes this repo's path and the node path;
   re-run `npm run install-shortcut` after moving the repo or changing Node.
-- Logs: `~/.daily-dashboard/app.log`. Jira cache: `~/.daily-dashboard/jira-cache.json`.
+- Logs: `~/.my-workday-assistant/app.log`. Jira cache: `~/.my-workday-assistant/jira-cache.json`.

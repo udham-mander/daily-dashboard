@@ -33,7 +33,7 @@ test("matches: by a named item, or by the wording when nothing is named", () => 
 });
 
 test("createBlacklist: persists, de-duplicates, removes, filters, hints; a bad file is an empty list", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dd-black-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mwa-black-"));
   const file = path.join(dir, "blacklist.json");
   const b = createBlacklist(file);
   assert.deepEqual(b.list(), []);

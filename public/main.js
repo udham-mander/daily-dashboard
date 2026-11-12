@@ -1,4 +1,4 @@
-// Daily Dashboard page. Talks only to this app's own API (see lib/server.js).
+// My workday assistant page. Talks only to this app's own API (see lib/server.js).
 import { $, ago, api, dayOf, daysSince, describeKey, esc, icon, initTheme, longDate, pill, prLink, reviewPill, safeUrl, shortDate, since, store, timeOf, toast } from "./shared.js";
 
 const KEY_RE = /\b[A-Z][A-Z0-9]+-\d+\b/g;
@@ -9,12 +9,12 @@ let DATA = null;
 // Item notes edited in this browser but not saved yet. Only these are sent on Save; the server
 // merges them into today's file, so notes added elsewhere (e.g. by Claude) are never overwritten.
 let dirty = {};
-const draftKey = () => `dd-drafts-${DATA?.today}`;
+const draftKey = () => `mwa-drafts-${DATA?.today}`;
 
 function loadDirty() {
   dirty = JSON.parse(store.get(draftKey()) ?? "{}");
   delete dirty.summary;   // the summary box was replaced by the notes log
-  for (const k of store.keys()) if (k.startsWith("dd-drafts-") && k !== draftKey()) store.del(k);   // forget old days
+  for (const k of store.keys()) if (k.startsWith("mwa-drafts-") && k !== draftKey()) store.del(k);   // forget old days
 }
 
 // ---------- item notes ----------
@@ -207,7 +207,7 @@ async function addEntry(e) {
     const r = await api("/api/entries", { text });
     Object.assign(DATA, { todayEntries: r.entries, todayNotes: r.notes });
     box.value = ""; autosize(box);
-    store.del(`dd-entry-draft`);
+    store.del(`mwa-entry-draft`);
     renderToday();
     closeComposer();
     toast("Note added");
@@ -530,7 +530,7 @@ async function saveItemNotes() {
 async function quit() {
   if (Object.keys(dirty).length) await saveItemNotes();
   try { await api("/api/quit", {}); } catch {}
-  document.body.innerHTML = `<main><div class="banner">${icon("power")}Daily Dashboard stopped. Start it again from the desktop icon.</div></main>`;
+  document.body.innerHTML = `<main><div class="banner">${icon("power")}My workday assistant stopped. Start it again from the desktop icon.</div></main>`;
 }
 
 // ---------- wiring ----------
@@ -555,8 +555,8 @@ $("composer").addEventListener("submit", addEntry);
 initTheme($("themeSel"));
 
 // Typing a new note: keep a draft, grow the box, Ctrl+Enter adds it.
-$("entryText").value = store.get("dd-entry-draft") ?? "";
-$("entryText").addEventListener("input", (e) => { store.set("dd-entry-draft", e.target.value); autosize(e.target); });
+$("entryText").value = store.get("mwa-entry-draft") ?? "";
+$("entryText").addEventListener("input", (e) => { store.set("mwa-entry-draft", e.target.value); autosize(e.target); });
 $("entryText").addEventListener("keydown", (e) => {
   if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) addEntry(e);
   else if (e.key === "Escape") { e.preventDefault(); closeComposer(); $("newBtn").focus(); }

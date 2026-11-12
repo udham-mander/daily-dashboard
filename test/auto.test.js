@@ -155,7 +155,7 @@ test("plan: previous-day catch-up once a day, end-of-day save once in its window
 });
 
 test("createAutoNotes.update writes the day's auto record beside the user's notes; an empty day writes nothing", async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dd-auto-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mwa-auto-"));
   const day = "2026-11-11";
   const events = [{ type: "PushEvent", created_at: iso(day, "10:00"), repo: { name: "o/api" }, payload: { ref: "refs/heads/main", size: 1, commits: [{ message: "fix" }] } }];
   let refreshed = 0, claudeCalls = 0;
@@ -245,7 +245,7 @@ test("createAutoNotes.update writes the day's auto record beside the user's note
 });
 
 test("dismiss/restore: a crossed-off nudge leaves today's take and is blacklisted; restoring puts it back", async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dd-dismiss-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mwa-dismiss-"));
   const day = "2026-11-11";
   const jira = { state: { issues: [], done: [], fetchedAt: new Date().toISOString() }, refresh: async () => {} };
   const data = () => ({ github: { login: "me", mine: [], toReview: [], closed: [], reviewed: [] }, jiraDone: [], since: "2026-01-01" });
@@ -300,7 +300,7 @@ test("dismiss/restore: a crossed-off nudge leaves today's take and is blackliste
 });
 
 test("tick(): one feed download per tick, quiet days not retried, end of day once, midnight catch-up, failures retried later", async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dd-tick-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mwa-tick-"));
   const D = "2026-11-13";
   const events = [{ type: "PushEvent", created_at: iso("2026-11-12", "10:00"), repo: { name: "o/api" }, payload: { ref: "refs/heads/main", head: "a", before: "b" } }];
   const jira = { state: { issues: [], done: [], fetchedAt: new Date().toISOString() }, refresh: async () => {} };

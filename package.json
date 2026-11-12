@@ -1,11 +1,11 @@
 {
-  "name": "daily-dashboard",
+  "name": "my-workday-assistant",
   "version": "1.0.0",
   "description": "Local web app: open Jira issues, GitHub PRs with what each is waiting on, PRs awaiting your review, and daily progress notes saved to a folder.",
   "private": true,
   "license": "MIT",
   "author": "Udham Mander <manderudham@gmail.com>",
-  "repository": { "type": "git", "url": "https://github.com/udham-mander/daily-dashboard.git" },
+  "repository": { "type": "git", "url": "https://github.com/udham-mander/my-workday-assistant.git" },
   "type": "module",
   "main": "app.js",
   "engines": { "node": ">=20.11" },

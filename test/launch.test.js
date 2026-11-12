@@ -5,7 +5,7 @@ import path from "node:path";
 import { test } from "node:test";
 import { cleanEnv, createLauncher, spawnDetached, terminalCommand } from "../lib/launch.js";
 
-const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "dd-launch-"));
+const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "mwa-launch-"));
 
 test("terminalCommand picks a terminal per platform and runs the command in the folder", () => {
   const has = (set) => (name) => set.includes(name);
@@ -74,7 +74,7 @@ test("a launched process does not inherit Claude Code's session markers (but kee
   assert.deepEqual(Object.keys(c).sort(), ["CLAUDE_CODE_ENABLE_TELEMETRY", "CLAUDE_CODE_GIT_BASH_PATH", "HOME", "PATH"]);
   assert.equal(env.CLAUDECODE, "1", "the input is not mutated");
   // For real: a child started by spawnDetached sees no marker even though this test process may carry them.
-  const out = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "dd-env-")), "env.json");
+  const out = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "mwa-env-")), "env.json");
   process.env.CLAUDE_CODE_CHILD_SESSION = "1";
   await spawnDetached(process.execPath, ["-e", "require('fs').writeFileSync(process.argv[1], JSON.stringify(process.env))", out], os.tmpdir());
   const seen = JSON.parse(fs.readFileSync(out, "utf8"));

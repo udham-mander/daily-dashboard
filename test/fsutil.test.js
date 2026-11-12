@@ -6,7 +6,7 @@ import { mock, test } from "node:test";
 import { readJson, writeFileAtomic } from "../lib/fsutil.js";
 
 test("writeFileAtomic: temp + rename, retried on a transient Windows EPERM, no temp file left behind on failure", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dd-fsutil-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mwa-fsutil-"));
   const file = path.join(dir, "sub", "data.json");
   writeFileAtomic(file, '{"a":1}');
   assert.deepEqual(readJson(file), { a: 1 });
